@@ -74,17 +74,29 @@ def test_node_config_rejects_garbage():
                            ssl_cert_file="c", ssl_key_file="k")
 
 
-@pytest.fixture(scope="module")
-def node_server(tmp_path_factory):
-    from app.utils.crypto import generate_certificate
-
-    tmp = tmp_path_factory.mktemp("node")
-    cert_file, key_file = str(tmp / "ssl_cert.pem"), str(tmp / "ssl_key.pem")
+def test_node_certificate_is_created_once(tmp_path):
+    cert_file, key_file = str(tmp_path / "ssl_cert.pem"), str(tmp_path / "ssl_key.pem")
     assert ensure_certificate(cert_file, key_file)
     assert not ensure_certificate(cert_file, key_file)  # kept on the next start
     assert os.stat(key_file).st_mode & 0o077 == 0
 
-    panel = generate_certificate()
+
+# "marzban": the X.509 v1 certificates Marzban and Marzban-node generate (tests/fixtures/marzban_*.pem),
+# which strict TLS verification rejects; existing installs keep using them after switching.
+@pytest.fixture(scope="module", params=["marzallow", "marzban"])
+def node_server(request, tmp_path_factory):
+    from app.utils.crypto import generate_certificate
+
+    tmp = tmp_path_factory.mktemp("node")
+    cert_file, key_file = str(tmp / "ssl_cert.pem"), str(tmp / "ssl_key.pem")
+    if request.param == "marzallow":
+        ensure_certificate(cert_file, key_file)
+        panel = generate_certificate()
+    else:
+        Path(cert_file).write_text((FIXTURES / "marzban_node_cert.pem").read_text())
+        Path(key_file).write_text((FIXTURES / "marzban_node_key.pem").read_text())
+        panel = {"cert": (FIXTURES / "marzban_panel_cert.pem").read_text(),
+                 "key": (FIXTURES / "marzban_panel_key.pem").read_text()}
     (tmp / "panel.pem").write_text(panel["cert"])
 
     port, api_port = _free_port(), _free_port()
@@ -224,3 +236,34 @@ def test_node_refuses_to_start_without_the_panel_certificate(tmp_path):
         assert result.returncode == 1, result.stderr
         assert "panel's certificate" in result.stderr
     assert (tmp_path / "cert.pem").is_file()  # its own certificate was created
+
+
+@pytest.mark.parametrize("fix", [False, True])
+def test_rpyc_node_with_marzban_certificates(fix, monkeypatch):
+    # Older Marzban-node installs use the RPyC protocol; their v1 certificates must verify too.
+    import rpyc
+    from rpyc.utils.authenticators import SSLAuthenticator
+    from rpyc.utils.server import ThreadedServer
+
+    from app.xray.node import RPyCXRayNode
+
+    port = _free_port()
+    server = ThreadedServer(rpyc.Service, hostname="127.0.0.1", port=port, authenticator=SSLAuthenticator(
+        keyfile=str(FIXTURES / "marzban_node_key.pem"), certfile=str(FIXTURES / "marzban_node_cert.pem"),
+        ca_certs=str(FIXTURES / "marzban_panel_cert.pem"),
+        ssl_version=ssl.PROTOCOL_TLS_SERVER))  # like Marzban-node's (older Python, not strict)
+    threading.Thread(target=server.start, daemon=True).start()
+    try:
+        if not fix:  # what rpyc does by default: a strict context
+            real = rpyc.ssl_connect
+            monkeypatch.setattr(rpyc, "ssl_connect", lambda *a, ssl_version=None, **k: real(*a, **k))
+        node = RPyCXRayNode("127.0.0.1", port, 1, (FIXTURES / "marzban_panel_key.pem").read_text(),
+                            (FIXTURES / "marzban_panel_cert.pem").read_text())
+        if fix:
+            node.connect()
+            assert node.connected
+        else:
+            with pytest.raises(ssl.SSLError, match="invalid CA certificate"):
+                node.connect()
+    finally:
+        server.close()
