@@ -120,7 +120,7 @@ export const AdminsModal: FC = () => {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside">
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+      <ModalOverlay />
       <ModalContent mx="3">
         <ModalHeader>{t("admins.title")}</ModalHeader>
         <ModalCloseButton />
@@ -187,7 +187,7 @@ export const AdminsModal: FC = () => {
           ) : (
             <>
               <HStack justifyContent="space-between" mb={3}>
-                <Text fontSize="sm" color="gray.500">
+                <Text fontSize="sm" color="text-muted">
                   {t("admins.description")}
                 </Text>
                 <Button size="sm" colorScheme="primary" onClick={() => startEdit()}>

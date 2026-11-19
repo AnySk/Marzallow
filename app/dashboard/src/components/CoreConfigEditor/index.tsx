@@ -123,8 +123,7 @@ export const CoreConfigEditor: FC<Props> = ({ value, onChange, height }) => {
         minH={{ base: "50vh", lg: 0 }}
         h={{ base: "50vh", lg: "full" }}
         border="1px solid"
-        borderColor="gray.300"
-        _dark={{ borderColor: "gray.500" }}
+        borderColor="border-strong"
         borderRadius={5}
         overflow="hidden"
         data-testid="core-config-editor"
@@ -135,8 +134,7 @@ export const CoreConfigEditor: FC<Props> = ({ value, onChange, height }) => {
         maxH={{ base: "50vh", lg: "full" }}
         overflowY="auto"
         border="1px solid"
-        borderColor="gray.200"
-        _dark={{ borderColor: "gray.600" }}
+        borderColor="border"
         borderRadius={5}
         p={3}
       >

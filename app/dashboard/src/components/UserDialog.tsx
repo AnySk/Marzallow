@@ -3,25 +3,23 @@ import {
   AlertIcon,
   Box,
   Button,
-  Collapse,
+  Drawer,
+  DrawerBody,
+  DrawerCloseButton,
+  DrawerContent,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerOverlay,
   Flex,
   FormControl,
   FormErrorMessage,
   FormHelperText,
   FormLabel,
-  Grid,
-  GridItem,
   HStack,
   IconButton,
-  Modal,
-  ModalBody,
-  ModalCloseButton,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  ModalOverlay,
-  Select,
-  Spinner,
+  Input as ChakraInput,
+  InputGroup,
+  InputRightElement,
   Switch,
   Text,
   Textarea,
@@ -31,16 +29,12 @@ import {
   useColorMode,
   useToast,
 } from "@chakra-ui/react";
-import {
-  ChartPieIcon,
-  PencilIcon,
-  UserPlusIcon,
-} from "@heroicons/react/24/outline";
+import { ChartPieIcon } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { resetStrategy } from "constants/UserSettings";
 import { FilterUsageType, useDashboard } from "contexts/DashboardContext";
 import dayjs from "dayjs";
-import { FC, useEffect, useState } from "react";
+import { FC, ReactNode, useEffect, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 import ReactDatePicker from "react-datepicker";
 import {
@@ -61,7 +55,6 @@ import {
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { z } from "zod";
 import { DeleteIcon } from "./DeleteUserModal";
-import { Icon } from "./Icon";
 import { Input } from "./Input";
 import { RadioGroup } from "./RadioGroup";
 import { UsageFilter, createUsageConfig } from "./UsageFilter";
@@ -70,20 +63,6 @@ import { UserExtras } from "./UserExtras";
 import { UserTemplate } from "types/Management";
 import { ReloadIcon } from "./Filters";
 import classNames from "classnames";
-
-const AddUserIcon = chakra(UserPlusIcon, {
-  baseStyle: {
-    w: 5,
-    h: 5,
-  },
-});
-
-const EditUserIcon = chakra(PencilIcon, {
-  baseStyle: {
-    w: 5,
-    h: 5,
-  },
-});
 
 const UserUsageIcon = chakra(ChartPieIcon, {
   baseStyle: {
@@ -414,497 +393,523 @@ export const UserDialog: FC<UserDialogProps> = () => {
     return result;
   };
 
+  const status = userStatus;
+  const now = dayjs();
+  const setExpireInDays = (days: number | null) => {
+    form.setValue("on_hold_expire_duration", null);
+    if (days === null) return form.setValue("expire", null, { shouldDirty: true });
+    const current = form.getValues("expire");
+    const base = current && dayjs.unix(current).isAfter(now) && isEditing ? dayjs.unix(current) : now;
+    form.setValue("expire", base.add(days, "day").set("hour", 23).set("minute", 59).set("second", 59).utc().unix(), {
+      shouldDirty: true,
+    });
+  };
+  const expireValue = useWatch({ control: form.control, name: "expire" });
+  const onHoldDays = useWatch({ control: form.control, name: "on_hold_expire_duration" });
+  const resetValue = useWatch({ control: form.control, name: "data_limit_reset_strategy" });
+  const unlimited = !(dataLimit && Number(dataLimit) > 0);
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="2xl">
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+    <Drawer isOpen={isOpen} onClose={onClose} placement="right" size="md" blockScrollOnMount>
+      <DrawerOverlay />
       <FormProvider {...form}>
-        <ModalContent mx="3">
-          <form onSubmit={form.handleSubmit(submit)}>
-            <ModalHeader pt={6}>
-              <HStack gap={2}>
-                <Icon color="primary">
-                  {isEditing ? (
-                    <EditUserIcon color="white" />
-                  ) : (
-                    <AddUserIcon color="white" />
-                  )}
-                </Icon>
-                <Text fontWeight="semibold" fontSize="lg">
-                  {isEditing
-                    ? t("userDialog.editUserTitle")
-                    : t("createNewUser")}
+        <DrawerContent maxW="620px" borderLeftWidth="1px" borderColor="border" boxShadow="float">
+          <chakra.form display="flex" flexDirection="column" h="full" onSubmit={form.handleSubmit(submit)}>
+            <DrawerHeader px={6} py={5} borderBottomWidth="1px" borderColor="border">
+              <VStack align="flex-start" spacing="2px" pr={10}>
+                <Text fontSize="18px" fontWeight={700}>
+                  {isEditing ? editingUser?.username : t("createNewUser")}
                 </Text>
-              </HStack>
-            </ModalHeader>
-            <ModalCloseButton mt={3} disabled={disabled} />
-            <ModalBody>
+                <Text fontSize="13px" color="text-muted" fontWeight={400}>
+                  {isEditing ? t("userDialog.editSubtitle") : t("userDialog.createSubtitle")}
+                </Text>
+              </VStack>
+            </DrawerHeader>
+            <DrawerCloseButton top={5} right={5} isDisabled={disabled} />
+            <DrawerBody p={0}>
               {!isEditing && <TemplatePicker onApply={applyTemplate} />}
-              <Grid
-                templateColumns={{
-                  base: "repeat(1, 1fr)",
-                  md: "repeat(2, 1fr)",
-                }}
-                gap={3}
-              >
-                <GridItem>
-                  <VStack justifyContent="space-between">
-                    <Flex
-                      flexDirection="column"
-                      gridAutoRows="min-content"
-                      w="full"
-                    >
-                      <Flex flexDirection="row" w="full" gap={2}>
-                        <FormControl mb={"10px"}>
-                          <FormLabel>
-                            <Flex gap={2} alignItems={"center"}>
-                              {t("username")}
-                              {!isEditing && (
-                                <ReloadIcon
-                                  cursor={"pointer"}
-                                  className={classNames({
-                                    "animate-spin": randomUsernameLoading,
-                                  })}
-                                  onClick={() => {
-                                    const randomUsername =
-                                      createRandomUsername();
-                                    form.setValue("username", randomUsername);
-                                    setTimeout(() => {
-                                      setrandomUsernameLoading(false);
-                                    }, 350);
-                                  }}
-                                />
-                              )}
-                            </Flex>
-                          </FormLabel>
-                          <HStack>
-                            <Input
+
+              <FormSection title={t("userDialog.account")}>
+                <FormControl isInvalid={!!form.formState.errors.username}>
+                  <FormLabel>{t("username")}</FormLabel>
+                  <HStack spacing={3}>
+                    <InputGroup>
+                      <ChakraInput
+                        fontFamily="mono"
+                        autoComplete="off"
+                        isDisabled={disabled || isEditing}
+                        {...form.register("username")}
+                      />
+                      {!isEditing && (
+                        <InputRightElement>
+                          <Tooltip label={t("userDialog.randomUsername")}>
+                            <IconButton
                               size="sm"
-                              type="text"
-                              borderRadius="6px"
-                              error={form.formState.errors.username?.message}
-                              disabled={disabled || isEditing}
-                              {...form.register("username")}
-                            />
-                            {isEditing && (
-                              <HStack px={1}>
-                                <Controller
-                                  name="status"
-                                  control={form.control}
-                                  render={({ field }) => {
-                                    return (
-                                      <Tooltip
-                                        placement="top"
-                                        label={"status: " + t(`status.${field.value}`)}
-                                        textTransform="capitalize"
-                                      >
-                                        <Box>
-                                          <Switch
-                                            colorScheme="primary"
-                                            isChecked={field.value === "active"}
-                                            onChange={(e) => {
-                                              if (e.target.checked) {
-                                                field.onChange("active");
-                                              } else {
-                                                field.onChange("disabled");
-                                              }
-                                            }}
-                                          />
-                                        </Box>
-                                      </Tooltip>
-                                    );
-                                  }}
+                              variant="ghost"
+                              aria-label={t("userDialog.randomUsername")}
+                              icon={
+                                <ReloadIcon
+                                  className={classNames({ "animate-spin": randomUsernameLoading })}
                                 />
-                              </HStack>
-                            )}
-                          </HStack>
-                        </FormControl>
-                        {!isEditing && (
-                          <FormControl flex="1">
-                            <FormLabel whiteSpace={"nowrap"}>
-                              {t("userDialog.onHold")}
-                            </FormLabel>
-                            <Controller
-                              name="status"
-                              control={form.control}
-                              render={({ field }) => {
-                                const status = field.value;
-                                return (
-                                  <>
-                                    {status ? (
-                                      <Switch
-                                        colorScheme="primary"
-                                        isChecked={status === "on_hold"}
-                                        onChange={(e) => {
-                                          if (e.target.checked) {
-                                            field.onChange("on_hold");
-                                          } else {
-                                            field.onChange("active");
-                                          }
-                                        }}
-                                      />
-                                    ) : (
-                                      ""
-                                    )}
-                                  </>
-                                );
+                              }
+                              onClick={() => {
+                                form.setValue("username", createRandomUsername(), { shouldValidate: true });
+                                setTimeout(() => setrandomUsernameLoading(false), 350);
                               }}
                             />
-                          </FormControl>
+                          </Tooltip>
+                        </InputRightElement>
+                      )}
+                    </InputGroup>
+                    {isEditing && (status === "active" || status === "disabled") && (
+                      <Controller
+                        name="status"
+                        control={form.control}
+                        render={({ field }) => (
+                          <HStack as="label" spacing={2} flex="none" cursor="pointer">
+                            <Switch
+                              colorScheme="primary"
+                              isChecked={field.value === "active"}
+                              onChange={(e) => field.onChange(e.target.checked ? "active" : "disabled")}
+                            />
+                            <Text fontSize="13px" fontWeight={500}>
+                              {field.value === "active" ? t("userDialog.enabled") : t("status.disabled")}
+                            </Text>
+                          </HStack>
                         )}
-                      </Flex>
-                      <FormControl mb={"10px"}>
-                        <FormLabel>{t("userDialog.dataLimit")}</FormLabel>
-                        <Controller
-                          control={form.control}
-                          name="data_limit"
-                          render={({ field }) => {
-                            return (
-                              <Input
-                                endAdornment="GB"
-                                type="number"
-                                size="sm"
-                                borderRadius="6px"
-                                onChange={field.onChange}
-                                disabled={disabled}
-                                error={
-                                  form.formState.errors.data_limit?.message
-                                }
-                                value={field.value ? String(field.value) : ""}
-                              />
-                            );
-                          }}
-                        />
-                      </FormControl>
-                      <Collapse
-                        in={!!(dataLimit && dataLimit > 0)}
-                        animateOpacity
-                        style={{ width: "100%" }}
-                      >
-                        <FormControl height="66px">
-                          <FormLabel>
-                            {t("userDialog.periodicUsageReset")}
-                          </FormLabel>
-                          <Controller
-                            control={form.control}
-                            name="data_limit_reset_strategy"
-                            render={({ field }) => {
-                              return (
-                                <Select
-                                  size="sm"
-                                  {...field}
-                                  disabled={disabled}
-                                  bg={disabled ? "gray.100" : "transparent"}
-                                  _dark={{
-                                    bg: disabled ? "gray.600" : "transparent",
-                                  }}
-                                  sx={{
-                                    option: {
-                                      backgroundColor: colorMode === "dark" ? "#222C3B" : "white"
-                                    }
-                                  }}
-                                >
-                                  {resetStrategy.map((s) => {
-                                    return (
-                                      <option key={s.value} value={s.value}>
-                                        {t(
-                                          "userDialog.resetStrategy" + s.title
-                                        )}
-                                      </option>
-                                    );
-                                  })}
-                                </Select>
-                              );
-                            }}
-                          />
-                        </FormControl>
-                      </Collapse>
-
-                      <FormControl mb={"10px"}>
-                        <FormLabel>
-                          {isOnHold
-                            ? t("userDialog.onHoldExpireDuration")
-                            : t("userDialog.expiryDate")}
-                        </FormLabel>
-
-                        {isOnHold && (
-                          <Controller
-                            control={form.control}
-                            name="on_hold_expire_duration"
-                            render={({ field }) => {
-                              return (
-                                <Input
-                                  endAdornment="Days"
-                                  type="number"
-                                  size="sm"
-                                  borderRadius="6px"
-                                  onChange={(on_hold) => {
-                                    form.setValue("expire", null);
-                                    field.onChange({
-                                      target: {
-                                        value: on_hold,
-                                      },
-                                    });
-                                  }}
-                                  disabled={disabled}
-                                  error={
-                                    form.formState.errors
-                                      .on_hold_expire_duration?.message
-                                  }
-                                  value={field.value ? String(field.value) : ""}
-                                />
-                              );
-                            }}
-                          />
-                        )}
-                        {!isOnHold && (
-                          <Controller
-                            name="expire"
-                            control={form.control}
-                            render={({ field }) => {
-                              function createDateAsUTC(num: number) {
-                                return dayjs(
-                                  dayjs(num * 1000).utc()
-                                  // .format("MMMM D, YYYY") // exception with: dayjs.locale(lng);
-                                ).toDate();
-                              }
-                              const { status, time } = relativeExpiryDate(
-                                field.value
-                              );
-                              return (
-                                <>
-                                  <ReactDatePicker
-                                    dateFormat={t("dateFormat")}
-                                    minDate={new Date()}
-                                    selected={
-                                      field.value
-                                        ? createDateAsUTC(field.value)
-                                        : undefined
-                                    }
-                                    onChange={(date: Date) => {
-                                      form.setValue(
-                                        "on_hold_expire_duration",
-                                        null
-                                      );
-                                      field.onChange({
-                                        target: {
-                                          value: date
-                                            ? dayjs(
-                                              dayjs(date)
-                                                .set("hour", 23)
-                                                .set("minute", 59)
-                                                .set("second", 59)
-                                            )
-                                              .utc()
-                                              .valueOf() / 1000
-                                            : 0,
-                                          name: "expire",
-                                        },
-                                      });
-                                    }}
-                                    customInput={
-                                      <Input
-                                        size="sm"
-                                        type="text"
-                                        borderRadius="6px"
-                                        clearable
-                                        disabled={disabled}
-                                        error={
-                                          form.formState.errors.expire?.message
-                                        }
-                                      />
-                                    }
-                                  />
-                                  {field.value ? (
-                                    <FormHelperText>
-                                      {t(status, { time: time })}
-                                    </FormHelperText>
-                                  ) : (
-                                    ""
-                                  )}
-                                </>
-                              );
-                            }}
-                          />
-                        )}
-                      </FormControl>
-
-                      <FormControl
-                        mb={"10px"}
-                        isInvalid={!!form.formState.errors.note}
-                      >
-                        <FormLabel>{t("userDialog.note")}</FormLabel>
-                        <Textarea {...form.register("note")} />
-                        <FormErrorMessage>
-                          {form.formState.errors?.note?.message}
-                        </FormErrorMessage>
-                      </FormControl>
-                    </Flex>
-                    {error && (
-                      <Alert
-                        status="error"
-                        display={{ base: "none", md: "flex" }}
-                      >
-                        <AlertIcon />
-                        {error}
-                      </Alert>
+                      />
                     )}
-                  </VStack>
-                </GridItem>
-                <GridItem>
-                  <FormControl
-                    isInvalid={
-                      !!form.formState.errors.selected_proxies?.message
-                    }
-                  >
-                    <FormLabel>{t("userDialog.protocols")}</FormLabel>
+                  </HStack>
+                  {isEditing ? (
+                    <FormHelperText>{t("userDialog.usernameFixed")}</FormHelperText>
+                  ) : null}
+                  <FormErrorMessage>{form.formState.errors.username?.message as string}</FormErrorMessage>
+                </FormControl>
+                <FormControl isInvalid={!!form.formState.errors.note}>
+                  <FormLabel>
+                    {t("userDialog.note")}{" "}
+                    <Text as="span" color="text-muted" fontWeight={400}>
+                      {t("userDialog.optional")}
+                    </Text>
+                  </FormLabel>
+                  <Textarea rows={2} {...form.register("note")} />
+                  <FormHelperText>{t("userDialog.noteHelp")}</FormHelperText>
+                  <FormErrorMessage>{form.formState.errors?.note?.message}</FormErrorMessage>
+                </FormControl>
+              </FormSection>
+
+              <FormSection title={t("userDialog.dataLimit")} help={t("userDialog.dataLimitHelp")}>
+                <Flex wrap="wrap" gap={3} align="flex-end">
+                  <FormControl w="180px" isInvalid={!!form.formState.errors.data_limit}>
+                    <FormLabel>{t("userDialog.limit")}</FormLabel>
                     <Controller
                       control={form.control}
-                      name="selected_proxies"
-                      render={({ field }) => {
-                        return (
-                          <RadioGroup
-                            list={[
-                              {
-                                title: "vmess",
-                                description: t("userDialog.vmessDesc"),
-                              },
-                              {
-                                title: "vless",
-                                description: t("userDialog.vlessDesc"),
-                              },
-                              {
-                                title: "trojan",
-                                description: t("userDialog.trojanDesc"),
-                              },
-                              {
-                                title: "shadowsocks",
-                                description: t("userDialog.shadowsocksDesc"),
-                              },
-                            ]}
-                            disabled={disabled}
-                            {...field}
+                      name="data_limit"
+                      render={({ field }) => (
+                        <InputGroup>
+                          <ChakraInput
+                            inputMode="decimal"
+                            type="number"
+                            min={0}
+                            step="any"
+                            placeholder={t("usersTable.unlimited")}
+                            value={field.value ? String(field.value) : ""}
+                            onChange={field.onChange}
+                            isDisabled={disabled}
+                            pr="44px"
                           />
-                        );
-                      }}
-                    />
-                    <FormErrorMessage>
-                      {t(
-                        form.formState.errors.selected_proxies
-                          ?.message as string
+                          <InputRightElement color="text-muted" fontWeight={500} pointerEvents="none">
+                            GB
+                          </InputRightElement>
+                        </InputGroup>
                       )}
-                    </FormErrorMessage>
+                    />
+                    <FormErrorMessage>{form.formState.errors.data_limit?.message as string}</FormErrorMessage>
                   </FormControl>
-                </GridItem>
-                {isEditing && usageVisible && (
-                  <GridItem pt={6} colSpan={{ base: 1, md: 2 }}>
-                    <VStack gap={4}>
-                      <UsageFilter
-                        defaultValue={usageFilter}
-                        onChange={(filter, query) => {
-                          setUsageFilter(filter);
-                          fetchUsageWithFilter(query);
-                        }}
-                      />
-                      <Box
-                        width={{ base: "100%", md: "70%" }}
-                        justifySelf="center"
-                      >
-                        <ReactApexChart
-                          options={usage.options}
-                          series={usage.series}
-                          type="donut"
-                        />
-                      </Box>
-                    </VStack>
-                  </GridItem>
-                )}
-                {isEditing && editingUser && (
-                  <GridItem pt={6} colSpan={{ base: 1, md: 2 }}>
-                    <UserExtras user={editingUser} />
-                  </GridItem>
-                )}
-              </Grid>
-              {error && (
-                <Alert
-                  mt="3"
-                  status="error"
-                  display={{ base: "flex", md: "none" }}
-                >
-                  <AlertIcon />
-                  {error}
-                </Alert>
-              )}
-            </ModalBody>
-            <ModalFooter mt="3">
-              <HStack
-                justifyContent="space-between"
-                w="full"
-                gap={3}
-                flexDirection={{
-                  base: "column",
-                  sm: "row",
-                }}
-              >
-                <HStack
-                  justifyContent="flex-start"
-                  w={{
-                    base: "full",
-                    sm: "unset",
-                  }}
-                >
-                  {isEditing && (
-                    <>
-                      <Tooltip label={t("delete")} placement="top">
-                        <IconButton
-                          aria-label="Delete"
-                          size="sm"
+                  <QuickChips
+                    label={t("userDialog.quickLimits")}
+                    options={[10, 50, 100, 500].map((gb) => ({ label: `${gb} GB`, on: Number(dataLimit) === gb, onClick: () => form.setValue("data_limit", gb, { shouldDirty: true }) }))
+                      .concat([{ label: t("userDialog.unlimited"), on: unlimited, onClick: () => form.setValue("data_limit", null, { shouldDirty: true }) }])}
+                  />
+                </Flex>
+                <FormControl isDisabled={unlimited}>
+                  <FormLabel>{t("userDialog.periodicUsageReset")}</FormLabel>
+                  <Segmented
+                    value={unlimited ? "no_reset" : resetValue || "no_reset"}
+                    isDisabled={unlimited || disabled}
+                    onChange={(v) => form.setValue("data_limit_reset_strategy", v as any, { shouldDirty: true })}
+                    options={resetStrategy.map((r) => ({ value: r.value, label: t(`userDialog.reset.${r.value}`) }))}
+                  />
+                  <FormHelperText>
+                    {unlimited ? t("userDialog.resetNeedsLimit") : t(`userDialog.resetHelp.${resetValue || "no_reset"}`)}
+                  </FormHelperText>
+                </FormControl>
+              </FormSection>
+
+              <FormSection title={t("userDialog.expiry")}>
+                {(!isEditing || isOnHold) && (
+                  <Controller
+                    name="status"
+                    control={form.control}
+                    render={({ field }) => (
+                      <Flex wrap="wrap" gap="10px" role="radiogroup" aria-label={t("userDialog.expiry")}>
+                        <Choice
+                          on={field.value !== "on_hold"}
+                          title={t("userDialog.fixedDate")}
+                          help={t("userDialog.fixedDateHelp")}
                           onClick={() => {
-                            onDeletingUser(editingUser);
-                            onClose();
+                            form.setValue("on_hold_expire_duration", null);
+                            field.onChange("active");
                           }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip label={t("userDialog.usage")} placement="top">
-                        <IconButton
-                          aria-label="usage"
-                          size="sm"
-                          onClick={handleUsageToggle}
-                        >
-                          <UserUsageIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Button onClick={handleResetUsage} size="sm">
-                        {t("userDialog.resetUsage")}
+                        />
+                        <Choice
+                          on={field.value === "on_hold"}
+                          title={t("userDialog.firstConnection")}
+                          help={t("userDialog.firstConnectionHelp")}
+                          onClick={() => {
+                            form.setValue("expire", null);
+                            if (!form.getValues("on_hold_expire_duration"))
+                              form.setValue("on_hold_expire_duration", 30);
+                            field.onChange("on_hold");
+                          }}
+                        />
+                      </Flex>
+                    )}
+                  />
+                )}
+                {isOnHold ? (
+                  <Flex wrap="wrap" gap={3} align="flex-end">
+                    <FormControl w="200px" isInvalid={!!form.formState.errors.on_hold_expire_duration}>
+                      <FormLabel>{t("userDialog.onHoldExpireDuration")}</FormLabel>
+                      <Controller
+                        control={form.control}
+                        name="on_hold_expire_duration"
+                        render={({ field }) => (
+                          <InputGroup>
+                            <ChakraInput
+                              type="number"
+                              min={0}
+                              inputMode="numeric"
+                              value={field.value ? String(field.value) : ""}
+                              onChange={(e) => {
+                                form.setValue("expire", null);
+                                field.onChange(e);
+                              }}
+                              isDisabled={disabled}
+                              pr="56px"
+                            />
+                            <InputRightElement w="56px" color="text-muted" fontWeight={500} pointerEvents="none">
+                              {t("userDialog.days")}
+                            </InputRightElement>
+                          </InputGroup>
+                        )}
+                      />
+                      <FormErrorMessage>{form.formState.errors.on_hold_expire_duration?.message as string}</FormErrorMessage>
+                    </FormControl>
+                    <QuickChips
+                      label={t("userDialog.quickDurations")}
+                      options={[7, 30, 90, 365].map((d) => ({
+                        label: t("userDialog.nDays", { count: d }),
+                        on: Number(onHoldDays) === d,
+                        onClick: () => form.setValue("on_hold_expire_duration", d, { shouldDirty: true }),
+                      }))}
+                    />
+                  </Flex>
+                ) : (
+                  <>
+                    <Flex wrap="wrap" gap={3} align="flex-end">
+                      <FormControl w="200px" isInvalid={!!form.formState.errors.expire}>
+                        <FormLabel>{t("userDialog.expiryDate")}</FormLabel>
+                        <Controller
+                          name="expire"
+                          control={form.control}
+                          render={({ field }) => (
+                            <ReactDatePicker
+                              dateFormat={t("dateFormat")}
+                              minDate={new Date()}
+                              placeholderText={t("usersTable.neverExpires")}
+                              selected={field.value ? dayjs(dayjs(field.value * 1000).utc()).toDate() : undefined}
+                              onChange={(date: Date) => {
+                                form.setValue("on_hold_expire_duration", null);
+                                field.onChange({
+                                  target: {
+                                    value: date
+                                      ? dayjs(dayjs(date).set("hour", 23).set("minute", 59).set("second", 59)).utc().valueOf() / 1000
+                                      : 0,
+                                    name: "expire",
+                                  },
+                                });
+                              }}
+                              customInput={
+                                <Input type="text" clearable disabled={disabled} error={form.formState.errors.expire?.message} />
+                              }
+                            />
+                          )}
+                        />
+                      </FormControl>
+                      <QuickChips
+                        label={t("userDialog.quickDurations")}
+                        options={[
+                          { label: t("userDialog.plusDays", { count: 7 }), onClick: () => setExpireInDays(7) },
+                          { label: t("userDialog.plusDays", { count: 30 }), onClick: () => setExpireInDays(30) },
+                          { label: t("userDialog.plusDays", { count: 90 }), onClick: () => setExpireInDays(90) },
+                          { label: t("userDialog.plusYear"), onClick: () => setExpireInDays(365) },
+                          { label: t("userDialog.never"), on: !expireValue, onClick: () => setExpireInDays(null) },
+                        ]}
+                      />
+                    </Flex>
+                    <Text fontSize="12px" color="text-muted">
+                      {expireValue
+                        ? t(relativeExpiryDate(expireValue).status, { time: relativeExpiryDate(expireValue).time }) +
+                          " · " +
+                          t("userDialog.atEndOfDay")
+                        : t("userDialog.neverExpiresHelp")}
+                    </Text>
+                  </>
+                )}
+              </FormSection>
+
+              <FormSection title={t("userDialog.protocols")} help={t("userDialog.protocolsHelp")} last={!isEditing}>
+                <FormControl isInvalid={!!form.formState.errors.selected_proxies?.message}>
+                  <Controller
+                    control={form.control}
+                    name="selected_proxies"
+                    render={({ field }) => (
+                      <RadioGroup
+                        list={[
+                          { title: "vless", description: "" },
+                          { title: "vmess", description: "" },
+                          { title: "trojan", description: "" },
+                          { title: "shadowsocks", description: "" },
+                        ]}
+                        disabled={disabled}
+                        {...field}
+                      />
+                    )}
+                  />
+                  <FormErrorMessage>{t(form.formState.errors.selected_proxies?.message as string)}</FormErrorMessage>
+                </FormControl>
+              </FormSection>
+
+              {isEditing && editingUser && (
+                <>
+                  <FormSection
+                    title={t("userDialog.usageByNode")}
+                    action={
+                      <Button size="sm" variant="ghost" onClick={handleUsageToggle} rightIcon={<UserUsageIcon />}>
+                        {usageVisible ? t("userDialog.hide") : t("userDialog.show")}
                       </Button>
-                      <Button onClick={handleRevokeSubscription} size="sm">
-                        {t("userDialog.revokeSubscription")}
-                      </Button>
-                    </>
-                  )}
-                </HStack>
-                <HStack
-                  w="full"
-                  maxW={{ md: "50%", base: "full" }}
-                  justify="end"
-                >
-                  <Button
-                    type="submit"
-                    size="sm"
-                    px="8"
-                    colorScheme="primary"
-                    leftIcon={loading ? <Spinner size="xs" /> : undefined}
-                    disabled={disabled}
+                    }
                   >
-                    {isEditing ? t("userDialog.editUser") : t("createUser")}
-                  </Button>
-                </HStack>
+                    {usageVisible && (
+                      <VStack gap={4}>
+                        <UsageFilter
+                          defaultValue={usageFilter}
+                          onChange={(filter, query) => {
+                            setUsageFilter(filter);
+                            fetchUsageWithFilter(query);
+                          }}
+                        />
+                        <Box width={{ base: "100%", md: "80%" }} justifySelf="center">
+                          <ReactApexChart options={usage.options} series={usage.series} type="donut" />
+                        </Box>
+                      </VStack>
+                    )}
+                  </FormSection>
+                  <FormSection title={t("userDialog.more")} last>
+                    <UserExtras user={editingUser} />
+                  </FormSection>
+                </>
+              )}
+              {error && (
+                <Box px={6} pb={5}>
+                  <Alert status="error">
+                    <AlertIcon />
+                    {error}
+                  </Alert>
+                </Box>
+              )}
+            </DrawerBody>
+            <DrawerFooter
+              px={6}
+              py="14px"
+              borderTopWidth="1px"
+              borderColor="border"
+              bg="surface"
+              justifyContent="space-between"
+              flexWrap="wrap"
+              gap={3}
+            >
+              <HStack spacing={2} flexWrap="wrap">
+                {isEditing && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      colorScheme="red"
+                      leftIcon={<DeleteIcon />}
+                      onClick={() => {
+                        onDeletingUser(editingUser);
+                        onClose();
+                      }}
+                    >
+                      {t("delete")}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleResetUsage}>
+                      {t("userDialog.resetUsage")}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleRevokeSubscription}>
+                      {t("userDialog.revokeSubscription")}
+                    </Button>
+                  </>
+                )}
               </HStack>
-            </ModalFooter>
-          </form>
-        </ModalContent>
+              <HStack spacing={2} ml="auto">
+                <Button variant="outline" onClick={onClose} isDisabled={disabled}>
+                  {t("cancel")}
+                </Button>
+                <Button type="submit" colorScheme="primary" isLoading={loading} isDisabled={disabled}>
+                  {isEditing ? t("userDialog.editUser") : t("createUser")}
+                </Button>
+              </HStack>
+            </DrawerFooter>
+          </chakra.form>
+        </DrawerContent>
       </FormProvider>
-    </Modal>
+    </Drawer>
   );
 };
+
+
+const FormSection: FC<{ title: string; help?: string; action?: ReactNode; last?: boolean; children: ReactNode }> = ({
+  title,
+  help,
+  action,
+  last,
+  children,
+}) => (
+  <VStack
+    as="section"
+    align="stretch"
+    spacing={4}
+    px={6}
+    py={5}
+    borderBottomWidth={last ? 0 : "1px"}
+    borderColor="border-subtle"
+  >
+    <HStack justify="space-between" align="flex-start">
+      <VStack align="flex-start" spacing="2px">
+        <Text as="h3" fontSize="15px" fontWeight={650}>
+          {title}
+        </Text>
+        {help && (
+          <Text fontSize="12px" color="text-muted">
+            {help}
+          </Text>
+        )}
+      </VStack>
+      {action}
+    </HStack>
+    {children}
+  </VStack>
+);
+
+const QuickChips: FC<{ label: string; options: { label: string; on?: boolean; onClick: () => void }[] }> = ({ label, options }) => (
+  <Flex role="group" aria-label={label} wrap="wrap" gap="6px" pb="4px">
+    {options.map((o) => (
+      <Button
+        key={o.label}
+        type="button"
+        size="xs"
+        h="28px"
+        px="10px"
+        borderRadius="full"
+        variant="outline"
+        fontSize="12px"
+        aria-pressed={!!o.on}
+        bg={o.on ? "accent-soft" : "surface"}
+        borderColor={o.on ? "primary.200" : "border-strong"}
+        color={o.on ? "accent-text" : "text-2"}
+        _hover={{ bg: o.on ? "accent-soft" : "surface-hover" }}
+        onClick={o.onClick}
+      >
+        {o.label}
+      </Button>
+    ))}
+  </Flex>
+);
+
+const Segmented: FC<{
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+  isDisabled?: boolean;
+}> = ({ value, options, onChange, isDisabled }) => (
+  <Flex role="radiogroup" wrap="wrap" bg="chakra-subtle-bg" borderRadius="9px" p="3px" gap="2px" opacity={isDisabled ? 0.6 : 1}>
+    {options.map((o) => {
+      const on = o.value === value;
+      return (
+        <Button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={on}
+          flex={1}
+          h="32px"
+          size="sm"
+          variant="unstyled"
+          borderRadius="7px"
+          fontWeight={500}
+          fontSize="13px"
+          bg={on ? "surface" : "transparent"}
+          color={on ? "text" : "text-2"}
+          boxShadow={on ? "0 1px 2px rgba(16,24,40,.12)" : "none"}
+          isDisabled={isDisabled}
+          _focusVisible={{ boxShadow: "outline" }}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </Button>
+      );
+    })}
+  </Flex>
+);
+
+const Choice: FC<{ on: boolean; title: string; help: string; onClick: () => void }> = ({ on, title, help, onClick }) => (
+  <HStack
+    as="button"
+    type="button"
+    role="radio"
+    aria-checked={on}
+    onClick={onClick}
+    flex="1 1 220px"
+    align="flex-start"
+    spacing={3}
+    px="14px"
+    py={3}
+    borderWidth="1px"
+    borderRadius="10px"
+    textAlign="left"
+    borderColor={on ? "accent" : "border-strong"}
+    bg={on ? "surface-selected" : "surface"}
+    _hover={{ borderColor: on ? "accent" : "gray.400" }}
+    _focusVisible={{ boxShadow: "outline", outline: "none" }}
+  >
+    <Box
+      mt="2px"
+      w="16px"
+      h="16px"
+      flex="none"
+      borderRadius="full"
+      borderWidth={on ? "5px" : "1.5px"}
+      borderColor={on ? "primary.500" : "gray.400"}
+      bg="surface"
+    />
+    <VStack align="flex-start" spacing="2px">
+      <Text fontWeight={600}>{title}</Text>
+      <Text fontSize="12px" color="text-muted">
+        {help}
+      </Text>
+    </VStack>
+  </HStack>
+);

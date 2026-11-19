@@ -171,11 +171,11 @@ export const SettingsModal: FC = () => {
 
   return (
     <Modal isOpen={isOpen} onClose={() => setModal(null)} size="2xl" scrollBehavior="inside">
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+      <ModalOverlay />
       <ModalContent mx="3">
         <ModalHeader>
           {t("settings.title")}
-          <Text fontSize="sm" fontWeight="normal" color="gray.500" mt={1}>
+          <Text fontSize="sm" fontWeight="normal" color="text-muted" mt={1}>
             {t("settings.description")}
           </Text>
         </ModalHeader>
@@ -206,7 +206,7 @@ export const SettingsModal: FC = () => {
         </ModalBody>
         <ModalFooter>
           <HStack>
-            <Text fontSize="xs" color="gray.500">
+            <Text fontSize="xs" color="text-muted">
               {changed.length ? t("settings.unsaved", { count: changed.length }) : ""}
             </Text>
             <Button size="sm" variant="ghost" onClick={() => setModal(null)}>

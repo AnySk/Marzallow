@@ -1,61 +1,36 @@
-import { Box, Text } from "@chakra-ui/react";
+import { Flex } from "@chakra-ui/react";
 import { FC, PropsWithChildren } from "react";
 
 export type IconType = {
   color: string;
 };
 
+const TONES: Record<string, [string, string]> = {
+  red: ["danger-bg", "danger-fg"],
+  orange: ["warning-bg", "warning-fg"],
+  yellow: ["warning-bg", "warning-fg"],
+  green: ["success-bg", "success-fg"],
+  purple: ["hold-bg", "hold-fg"],
+  primary: ["accent-soft", "accent-text"],
+  blue: ["accent-soft", "accent-text"],
+};
+
+/** The round tinted icon at the top of dialogs. */
 export const Icon: FC<PropsWithChildren<IconType>> = ({ children, color }) => {
+  const [bg, fg] = TONES[color] || ["neutral-bg", "neutral-fg"];
   return (
-    <Box
-      position="relative"
-      width="36px"
-      height="36px"
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
-      _before={{
-        content: '""',
-        display: "block",
-        position: "absolute",
-        top: "0",
-        left: "0",
-        width: "calc(100%)",
-        height: "calc(100%)",
-        bg: `${color}.400`,
-        opacity: ".5",
-        borderRadius: "5px",
-        zIndex: "1",
-        _dark: {
-          bg: `${color}.400`,
-        },
-      }}
-      _after={{
-        content: '""',
-        display: "block",
-        position: "absolute",
-        top: "0",
-        left: "0",
-        width: "calc(100% + 10px)",
-        height: "calc(100% + 10px)",
-        transform: "translate(-5px, -5px)",
-        bg: `${color}.400`,
-        opacity: ".4",
-        borderRadius: "8px",
-        zIndex: "1",
-        _dark: {
-          bg: `${color}.400`,
-        },
-      }}
+    <Flex
+      w="40px"
+      h="40px"
+      borderRadius="full"
+      bg={bg}
+      color={fg}
+      align="center"
+      justify="center"
+      flex="none"
+      sx={{ "& svg": { color: "currentColor", width: "20px", height: "20px" } }}
     >
-      <Text
-        color={`${color}.500`}
-        _dark={{ color: `${color}.900` }}
-        position="relative"
-        zIndex="2"
-      >
-        {children}
-      </Text>
-    </Box>
+      {children}
+    </Flex>
   );
 };

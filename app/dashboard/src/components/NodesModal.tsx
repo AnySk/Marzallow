@@ -73,10 +73,7 @@ import { Input } from "./Input";
 
 const CustomInput = chakra(Input, {
   baseStyle: {
-    bg: "white",
-    _dark: {
-      bg: "gray.700",
-    },
+    bg: "surface",
   },
 });
 
@@ -138,8 +135,7 @@ const NodeAccordion: FC<AccordionInboundType> = ({ toggleAccordion, node }) => {
   return (
     <AccordionItem
       border="1px solid"
-      _dark={{ borderColor: "gray.600" }}
-      _light={{ borderColor: "gray.200" }}
+      borderColor="border"
       borderRadius="4px"
       p={1}
       w="full"
@@ -152,8 +148,7 @@ const NodeAccordion: FC<AccordionInboundType> = ({ toggleAccordion, node }) => {
             fontSize="sm"
             flex="1"
             textAlign="left"
-            color="gray.700"
-            _dark={{ color: "gray.300" }}
+            color="text-2"
           >
             {node.name}
           </Text>
@@ -269,8 +264,7 @@ const AddNodeForm: FC<AddNodeFormType> = ({
   return (
     <AccordionItem
       border="1px solid"
-      _dark={{ borderColor: "gray.600" }}
-      _light={{ borderColor: "gray.200" }}
+      borderColor="border"
       borderRadius="4px"
       p={1}
       w="full"
@@ -282,8 +276,7 @@ const AddNodeForm: FC<AddNodeFormType> = ({
           fontSize="sm"
           flex="1"
           textAlign="left"
-          color="gray.700"
-          _dark={{ color: "gray.300" }}
+          color="text-2"
           display="flex"
           gap={1}
         >
@@ -559,12 +552,17 @@ export const NodesDialog: FC = () => {
   return (
     <>
       <Modal isOpen={isEditingNodes} onClose={onClose}>
-        <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+        <ModalOverlay />
         <ModalContent mx="3" w="fit-content" maxW="3xl">
-          <ModalHeader pt={6}>
-            <Icon color="primary">
-              <ModalIcon color="white" />
-            </Icon>
+          <ModalHeader pt={5}>
+            <HStack spacing={3}>
+              <Icon color="primary">
+                <ModalIcon />
+              </Icon>
+              <Text fontSize="17px" fontWeight={700}>
+                {t("nav.nodes")}
+              </Text>
+            </HStack>
           </ModalHeader>
           <ModalCloseButton mt={3} />
           <ModalBody w="440px" pb={6} pt={3}>

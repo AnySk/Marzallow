@@ -1,43 +1,35 @@
-import {FC} from "react";
-import {Text} from "@chakra-ui/react";
-import {relativeExpiryDate} from "utils/dateFormatter";
+import { Text, TextProps } from "@chakra-ui/react";
+import { FC } from "react";
+import { useTranslation } from "react-i18next";
+import { relativeExpiryDate } from "utils/dateFormatter";
+import { secondsSince } from "./OnlineBadge";
 
 type UserStatusProps = {
-    lastOnline: string | null;
+  lastOnline: string | null;
+} & TextProps;
+
+export const onlineText = (lastOnline: string | null, t: (key: string, o?: object) => string, seen = false) => {
+  const since = secondsSince(lastOnline);
+  if (since === null) return t("online.never");
+  if (since <= 60) return t("online.now");
+  const unix = Math.floor(Date.now() / 1000) - since;
+  return t(seen ? "online.seen" : "online.ago", { time: relativeExpiryDate(unix).time.split(", ")[0] });
 };
 
-const convertDateFormat = (lastOnline: string | null): number | null => {
-    if (!lastOnline) {
-        return null;
-    }
-
-    const date = new Date(lastOnline + "Z");
-    return Math.floor(date.getTime() / 1000);
-};
-
-export const OnlineStatus: FC<UserStatusProps> = ({lastOnline}) => {
-    const currentTimeInSeconds = Math.floor(Date.now() / 1000);
-    const unixTime = convertDateFormat(lastOnline);
-
-    const timeDifferenceInSeconds = unixTime ? currentTimeInSeconds - unixTime : null;
-    const dateInfo = unixTime ? relativeExpiryDate(unixTime) : {status: "", time: "Not Connected Yet"};
-
-    return (
-        <Text
-            display="inline-block"
-            fontSize="xs"
-            fontWeight="medium"
-            ml="2"
-            color="gray.600"
-            _dark={{
-                color: "gray.400",
-            }}
-        >
-            {timeDifferenceInSeconds && timeDifferenceInSeconds <= 60
-                ? "Online"
-                : timeDifferenceInSeconds
-                    ? `${dateInfo.time} ago`
-                    : dateInfo.time}
-        </Text>
-    );
+export const OnlineStatus: FC<UserStatusProps> = ({ lastOnline, ...props }) => {
+  const { t } = useTranslation();
+  const since = secondsSince(lastOnline);
+  const online = since !== null && since <= 60;
+  return (
+    <Text
+      as="span"
+      fontSize="13px"
+      color={online ? "success-fg" : "text-muted"}
+      fontWeight={online ? 500 : 400}
+      whiteSpace="nowrap"
+      {...props}
+    >
+      {onlineText(lastOnline, t)}
+    </Text>
+  );
 };

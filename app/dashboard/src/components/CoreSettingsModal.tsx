@@ -307,15 +307,6 @@ const CoreSettingModalContent: FC = () => {
                   size="sm"
                   style={{ width: "auto" }}
                   disabled={disabled}
-                  bg={disabled ? "gray.100" : "transparent"}
-                  _dark={{
-                    bg: disabled ? "gray.600" : "transparent",
-                  }}
-                  sx={{
-                    option: {
-                      backgroundColor: colorMode === "dark" ? "#222C3B" : "white"
-                    }
-                  }}
                   onChange={(v) =>
                     handleLog(
                       v.currentTarget.value,
@@ -342,13 +333,10 @@ const CoreSettingModalContent: FC = () => {
           </HStack>
           <Box
             border="1px solid"
-            borderColor="gray.300"
-            bg="#F9F9F9"
-            _dark={{
-              borderColor: "gray.500",
-              bg: "#2e3440",
-            }}
-            borderRadius={5}
+            borderColor="border"
+            bg="surface-subtle"
+            fontFamily="mono"
+            borderRadius="md"
             minHeight="200px"
             maxHeight={"250px"}
             p={2}
@@ -356,7 +344,7 @@ const CoreSettingModalContent: FC = () => {
             ref={logsDiv}
           >
             {logs.map((message, i) => (
-              <Text fontSize="xs" opacity={0.8} key={i} whiteSpace="pre-line">
+              <Text fontSize="12px" fontFamily="mono" color="text-2" key={i} whiteSpace="pre-line">
                 {message}
               </Text>
             ))}
@@ -408,12 +396,12 @@ export const CoreSettingsModal: FC = () => {
 
   return (
     <Modal isOpen={isEditingCore} onClose={onClose} size="6xl">
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+      <ModalOverlay />
       <ModalContent mx="3" w="full">
         <ModalHeader pt={6}>
           <HStack gap={2}>
             <Icon color="primary">
-              <UsageIcon color="white" />
+              <UsageIcon />
             </Icon>
             <Text fontWeight="semibold" fontSize="lg">
               {t("core.title")}

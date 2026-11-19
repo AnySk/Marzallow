@@ -84,8 +84,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
             outline: "2px solid",
             outlineColor: "primary.200",
           }}
-          bg={disabled ? "gray.100" : "transparent"}
-          _dark={{ bg: disabled ? "gray.600" : "transparent" }}
+          bg={disabled ? "surface-subtle" : "surface"}
         >
           {startAdornment && <InputLeftAddon>{startAdornment}</InputLeftAddon>}
           {/* @ts-ignore */}

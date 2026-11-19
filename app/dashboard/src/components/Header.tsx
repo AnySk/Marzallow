@@ -1,223 +1,139 @@
 import {
   Box,
+  Button,
   chakra,
-  HStack,
+  Flex,
+  Heading,
   IconButton,
-  Menu,
-  MenuButton,
-  MenuItem,
-  MenuList,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  InputRightElement,
+  Spinner,
   Text,
-  useColorMode,
+  VStack,
 } from "@chakra-ui/react";
-import {
-  ArrowLeftOnRectangleIcon,
-  ArrowTrendingUpIcon,
-  Bars3Icon,
-  AdjustmentsHorizontalIcon,
-  ChartPieIcon,
-  DocumentDuplicateIcon,
-  TrashIcon,
-  UsersIcon,
-  Cog6ToothIcon,
-  DocumentMinusIcon,
-  LinkIcon,
-  MoonIcon,
-  SquaresPlusIcon,
-  SunIcon,
-} from "@heroicons/react/24/outline";
+import { MagnifyingGlassIcon, PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
-import { useFeatures } from "contexts/FeaturesContext";
-import { FC, ReactNode } from "react";
+import debounce from "lodash.debounce";
+import { FC, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
-import { updateThemeColor } from "utils/themeColor";
-import useGetUser from "hooks/useGetUser";
+import { useSystemStats } from "./Statistics";
 
-type HeaderProps = {
-  actions?: ReactNode;
-};
-const iconProps = {
-  baseStyle: {
-    w: 4,
-    h: 4,
-  },
-};
+const SearchIcon = chakra(MagnifyingGlassIcon, { baseStyle: { w: "18px", h: "18px" } });
+const ClearIcon = chakra(XMarkIcon, { baseStyle: { w: 4, h: 4 } });
+const AddIcon = chakra(PlusIcon, { baseStyle: { w: 4, h: 4, strokeWidth: 2 } });
 
-const DarkIcon = chakra(MoonIcon, iconProps);
-const LightIcon = chakra(SunIcon, iconProps);
-const CoreSettingsIcon = chakra(Cog6ToothIcon, iconProps);
-const SettingsIcon = chakra(Bars3Icon, iconProps);
-const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
-const HostsIcon = chakra(LinkIcon, iconProps);
-const NodesIcon = chakra(SquaresPlusIcon, iconProps);
-const NodesUsageIcon = chakra(ChartPieIcon, iconProps);
-const ResetUsageIcon = chakra(DocumentMinusIcon, iconProps);
-const AdminsIcon = chakra(UsersIcon, iconProps);
-const TemplatesIcon = chakra(DocumentDuplicateIcon, iconProps);
-const AnalyticsIcon = chakra(ArrowTrendingUpIcon, iconProps);
-const CleanupIcon = chakra(TrashIcon, iconProps);
-const PanelSettingsIcon = chakra(AdjustmentsHorizontalIcon, iconProps);
+const setSearchFilter = debounce((search: string) => {
+  useDashboard.getState().onFilterChange({ offset: 0, search });
+}, 300);
 
-export const Header: FC<HeaderProps> = ({ actions }) => {
-  const { userData, getUserIsSuccess, getUserIsPending } = useGetUser();
+/** Page title, search ("/" focuses it) and the primary action. */
+export const Header: FC = () => {
+  const { t } = useTranslation();
+  const { loading, filters, onCreateUser } = useDashboard();
+  const { data: stats } = useSystemStats();
+  const [search, setSearch] = useState(filters.search || "");
+  const input = useRef<HTMLInputElement>(null);
 
-  const isSudo = () => {
-    if (!getUserIsPending && getUserIsSuccess) {
-      return userData.is_sudo;
-    }
-    return false;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (e.key !== "/" || e.metaKey || e.ctrlKey) return;
+      if (target.closest("input, textarea, select, [contenteditable=true], .cm-editor, [role=dialog]")) return;
+      e.preventDefault();
+      input.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const clear = () => {
+    setSearch("");
+    setSearchFilter.cancel();
+    useDashboard.getState().onFilterChange({ offset: 0, search: "" });
   };
 
-  const {
-    onEditingHosts,
-    onResetAllUsage,
-    onEditingNodes,
-    onShowingNodesUsage,
-  } = useDashboard();
-  const { t } = useTranslation();
-  const setModal = useFeatures((state) => state.setModal);
-  const { colorMode, toggleColorMode } = useColorMode();
-
   return (
-    <HStack
-      gap={2}
-      justifyContent="space-between"
-      __css={{
-        "& .menuList": {
-          direction: "ltr",
-        },
-      }}
-      position="relative"
-    >
-      <Text as="h1" fontWeight="semibold" fontSize="2xl">
-        {t("users")}
-      </Text>
-      <Box overflow="auto" css={{ direction: "rtl" }}>
-        <HStack alignItems="center">
-          <Menu>
-            <MenuButton
-              as={IconButton}
-              size="sm"
-              variant="outline"
-              icon={
-                <>
-                  <SettingsIcon />
-                </>
-              }
-              position="relative"
-            ></MenuButton>
-            <MenuList minW="170px" zIndex={99999} className="menuList">
-              {isSudo() && (
-                <>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<PanelSettingsIcon />}
-                    onClick={() => setModal("settings")}
-                  >
-                    {t("header.settings")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<AdminsIcon />}
-                    onClick={() => setModal("admins")}
-                  >
-                    {t("header.admins")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<TemplatesIcon />}
-                    onClick={() => setModal("templates")}
-                  >
-                    {t("header.templates")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<HostsIcon />}
-                    onClick={onEditingHosts.bind(null, true)}
-                  >
-                    {t("header.hostSettings")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<NodesIcon />}
-                    onClick={onEditingNodes.bind(null, true)}
-                  >
-                    {t("header.nodeSettings")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<NodesUsageIcon />}
-                    onClick={onShowingNodesUsage.bind(null, true)}
-                  >
-                    {t("header.nodesUsage")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<ResetUsageIcon />}
-                    onClick={onResetAllUsage.bind(null, true)}
-                  >
-                    {t("resetAllUsage")}
-                  </MenuItem>
-                </>
-              )}
-              <MenuItem
-                maxW="170px"
-                fontSize="sm"
-                icon={<AnalyticsIcon />}
-                onClick={() => setModal("analytics")}
-              >
-                {t("header.analytics")}
-              </MenuItem>
-              <MenuItem
-                maxW="170px"
-                fontSize="sm"
-                icon={<CleanupIcon />}
-                onClick={() => setModal("cleanup")}
-              >
-                {t("header.cleanup")}
-              </MenuItem>
-              <Link to="/login">
-                <MenuItem maxW="170px" fontSize="sm" icon={<LogoutIcon />}>
-                  {t("header.logout")}
-                </MenuItem>
-              </Link>
-            </MenuList>
-          </Menu>
-
-          {isSudo() && (
-            <IconButton
-              size="sm"
-              variant="outline"
-              aria-label="core settings"
-              onClick={() => {
-                useDashboard.setState({ isEditingCore: true });
-              }}
-            >
-              <CoreSettingsIcon />
-            </IconButton>
-          )}
-
-          <IconButton
-            size="sm"
-            variant="outline"
-            aria-label="switch theme"
-            onClick={() => {
-              updateThemeColor(colorMode == "dark" ? "light" : "dark");
-              toggleColorMode();
+    <Flex as="header" wrap="wrap" align="center" justify="space-between" gap={4}>
+      <VStack align="flex-start" spacing="2px">
+        <Heading as="h1" fontSize={{ base: "22px", md: "24px" }} fontWeight={700} letterSpacing="-.01em">
+          {t("users")}
+        </Heading>
+        {stats && (
+          <Text color="text-muted">
+            {t("header.summary", { active: stats.users_active, total: stats.total_user, online: stats.online_users })}
+          </Text>
+        )}
+      </VStack>
+      <Flex gap="10px" align="center" w={{ base: "full", sm: "auto" }}>
+        <InputGroup w={{ base: "full", sm: "300px" }}>
+          <InputLeftElement pointerEvents="none" color="text-muted">
+            <SearchIcon />
+          </InputLeftElement>
+          <Input
+            ref={input}
+            type="search"
+            aria-label={t("search")}
+            placeholder={t("header.searchPlaceholder")}
+            value={search}
+            pr="44px"
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setSearchFilter(e.target.value);
             }}
-          >
-            {colorMode === "light" ? <DarkIcon /> : <LightIcon />}
-          </IconButton>
-        </HStack>
-      </Box>
-    </HStack>
+            onKeyDown={(e) => e.key === "Escape" && clear()}
+            sx={{ "&::-webkit-search-cancel-button": { display: "none" } }}
+          />
+          <InputRightElement w="44px">
+            {loading ? (
+              <Spinner size="xs" color="text-muted" />
+            ) : search ? (
+              <IconButton size="xs" variant="ghost" aria-label={t("header.clearSearch")} icon={<ClearIcon />} onClick={clear} />
+            ) : (
+              <Box
+                as="kbd"
+                fontFamily="mono"
+                fontSize="11px"
+                color="text-muted"
+                borderWidth="1px"
+                borderColor="border"
+                borderRadius="4px"
+                px="5px"
+                lineHeight="18px"
+                display={{ base: "none", md: "block" }}
+              >
+                /
+              </Box>
+            )}
+          </InputRightElement>
+        </InputGroup>
+        <Button
+          colorScheme="primary"
+          leftIcon={<AddIcon />}
+          onClick={() => onCreateUser(true)}
+          display={{ base: "none", md: "inline-flex" }}
+          flex="none"
+        >
+          {t("createUser")}
+        </Button>
+      </Flex>
+      {/* phones: floating create button above the tab bar */}
+      <IconButton
+        aria-label={t("createUser")}
+        colorScheme="primary"
+        icon={<AddIcon w={6} h={6} />}
+        display={{ base: "inline-flex", md: "none" }}
+        position="fixed"
+        right={4}
+        bottom="84px"
+        w="56px"
+        h="56px"
+        borderRadius="16px"
+        boxShadow="0 8px 20px rgba(36, 84, 211, .35)"
+        zIndex="sticky"
+        onClick={() => onCreateUser(true)}
+      />
+    </Flex>
   );
 };

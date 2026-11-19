@@ -9,7 +9,6 @@ import {
   ModalContent,
   ModalHeader,
   ModalOverlay,
-  Progress,
   Spinner,
   Stat,
   StatLabel,
@@ -32,6 +31,7 @@ import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
 import { User } from "types/User";
 import { formatBytes } from "utils/formatByte";
+import { Bar } from "./ui";
 
 type DailyUsage = { date: string; used_traffic: number };
 const RANGES = [7, 30, 90];
@@ -42,6 +42,8 @@ export const AnalyticsModal: FC = () => {
   const isOpen = openModal === "analytics";
   const { t } = useTranslation();
   const { colorMode } = useColorMode();
+  const dark = colorMode === "dark";
+  const muted = dark ? "#9AA4B2" : "#5F6B7A";
   const [days, setDays] = useState(30);
 
   const { data: daily, isLoading } = useQuery({
@@ -69,7 +71,7 @@ export const AnalyticsModal: FC = () => {
 
   return (
     <Modal isOpen={isOpen} onClose={() => setModal(null)} size="3xl" scrollBehavior="inside">
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+      <ModalOverlay />
       <ModalContent mx="3">
         <ModalHeader>{t("analytics.title")}</ModalHeader>
         <ModalCloseButton />
@@ -96,13 +98,21 @@ export const AnalyticsModal: FC = () => {
                 height={260}
                 series={[{ name: t("analytics.traffic"), data: values }]}
                 options={{
-                  chart: { toolbar: { show: false }, background: "transparent" },
+                  chart: { toolbar: { show: false }, background: "transparent", fontFamily: "Inter, sans-serif" },
                   theme: { mode: colorMode },
                   dataLabels: { enabled: false },
-                  xaxis: { categories: dates.map((d) => dayjs(d).format("MMM D")), tickAmount: 10 },
-                  yaxis: { labels: { formatter: (v: number) => String(formatBytes(v, 1)) } },
-                  tooltip: { y: { formatter: (v: number) => String(formatBytes(v)) } },
-                  colors: ["#3B81F6"],
+                  grid: { borderColor: dark ? "#1C2639" : "#EEF0F3", strokeDashArray: 0 },
+                  plotOptions: { bar: { borderRadius: 4, borderRadiusApplication: "end", columnWidth: "60%" } },
+                  xaxis: {
+                    categories: dates.map((d) => dayjs(d).format("MMM D")),
+                    tickAmount: 10,
+                    axisBorder: { color: dark ? "#243049" : "#E4E7EC" },
+                    axisTicks: { color: dark ? "#243049" : "#E4E7EC" },
+                    labels: { style: { colors: muted } },
+                  },
+                  yaxis: { labels: { formatter: (v: number) => String(formatBytes(v, 1)), style: { colors: muted } } },
+                  tooltip: { theme: colorMode, y: { formatter: (v: number) => String(formatBytes(v)) } },
+                  colors: [dark ? "#6E95F2" : "#2454D3"],
                 }}
               />
             )}
@@ -123,7 +133,7 @@ export const AnalyticsModal: FC = () => {
                   <Td>{user.username}</Td>
                   <Td>
                     <HStack>
-                      <Progress value={(user.used_traffic / maxTop) * 100} size="sm" flex={1} borderRadius="sm" />
+                      <Bar value={(user.used_traffic / maxTop) * 100} flex={1} />
                       <Text fontSize="xs" minW="70px" textAlign="right">
                         {formatBytes(user.used_traffic)}
                       </Text>

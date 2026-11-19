@@ -42,7 +42,7 @@ const segmentLabel = (doc: unknown, path: JsonPath, i: number) => {
 
 /** Side panel listing the fields of the object under the cursor. */
 export const FieldsPanel: FC<Props> = ({ schema, doc, path, onEdit, onNavigate }) => {
-  if (!schema) return <Text fontSize="sm" color="gray.500">Loading schema…</Text>;
+  if (!schema) return <Text fontSize="sm" color="text-muted">Loading schema…</Text>;
   if (doc === undefined)
     return <Text fontSize="sm" color="orange.500">Fix the JSON errors to edit fields here.</Text>;
   if (!path) return null;
@@ -53,7 +53,7 @@ export const FieldsPanel: FC<Props> = ({ schema, doc, path, onEdit, onNavigate }
 
   return (
     <VStack align="stretch" spacing={3} data-testid="fields-panel">
-      <Wrap spacing={1} fontSize="xs" color="gray.500">
+      <Wrap spacing={1} fontSize="xs" color="text-muted">
         <Link onClick={() => onNavigate([])}>config</Link>
         {path.map((_, i) => (
           <HStack key={i} spacing={1}>
@@ -63,12 +63,12 @@ export const FieldsPanel: FC<Props> = ({ schema, doc, path, onEdit, onNavigate }
         ))}
       </Wrap>
       {node?.description && (
-        <Text fontSize="xs" color="gray.500">
+        <Text fontSize="xs" color="text-muted">
           {node.description}{" "}
           {node["x-docs"] && <Link href={node["x-docs"]} isExternal color="primary.500">docs ↗</Link>}
         </Text>
       )}
-      {!node && <Text fontSize="xs" color="gray.500">No schema for this part of the config.</Text>}
+      {!node && <Text fontSize="xs" color="text-muted">No schema for this part of the config.</Text>}
       {isArray ? (
         <ArrayItems schema={schema} node={node} value={value} path={path} onEdit={onEdit} onNavigate={onNavigate} />
       ) : (
@@ -197,7 +197,7 @@ const FieldRow: FC<{ root: SchemaNode; field: FieldInfo; value: any; path: JsonP
       );
     } else {
       control = present ? (
-        <Text fontSize="xs" color="gray.500" isTruncated>{JSON.stringify(value)}</Text>
+        <Text fontSize="xs" color="text-muted" isTruncated>{JSON.stringify(value)}</Text>
       ) : (
         <Button size="xs" variant="ghost" onClick={() => onEdit(path, initialValue(schema))}>+ Add</Button>
       );

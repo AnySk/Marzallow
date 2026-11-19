@@ -1,28 +1,28 @@
 import {
-  Box,
   Button,
   ButtonGroup,
   chakra,
   HStack,
+  IconButton,
   Select,
   Text,
 } from "@chakra-ui/react";
 import {
-  ArrowLongLeftIcon,
-  ArrowLongRightIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
 import { ChangeEvent, FC } from "react";
 import { useTranslation } from "react-i18next";
 import { setUsersPerPageLimitSize } from "utils/userPreferenceStorage";
 
-const PrevIcon = chakra(ArrowLongLeftIcon, {
+const PrevIcon = chakra(ChevronLeftIcon, {
   baseStyle: {
     w: 4,
     h: 4,
   },
 });
-const NextIcon = chakra(ArrowLongRightIcon, {
+const NextIcon = chakra(ChevronRightIcon, {
   baseStyle: {
     w: 4,
     h: 4,
@@ -103,65 +103,75 @@ export const Pagination: FC = () => {
   };
 
   const { t } = useTranslation();
+  const from = total ? (offset || 0) + 1 : 0;
+  const to = Math.min(total, (offset || 0) + (perPage || 0));
 
   return (
     <HStack
       justifyContent="space-between"
-      mt={4}
       w="full"
-      display="flex"
-      columnGap={{ lg: 4, md: 0 }}
-      rowGap={{ md: 0, base: 4 }}
-      flexDirection={{ md: "row", base: "column" }}
+      px={4}
+      py={3}
+      borderTopWidth="1px"
+      borderColor="border"
+      flexWrap="wrap"
+      gap={3}
     >
-      <Box order={{ base: 2, md: 1 }}>
-        <HStack>
-          <Select
-            minW="60px"
-            value={perPage}
-            onChange={handlePageSizeChange}
-            size="sm"
-            rounded="md"
-          >
-            <option>10</option>
-            <option>20</option>
-            <option>30</option>
-          </Select>
-          <Text whiteSpace={"nowrap"} fontSize="sm">
-            {t("itemsPerPage")}
-          </Text>
-        </HStack>
-      </Box>
+      <HStack spacing={3}>
+        <Text fontSize="13px" color="text-muted" whiteSpace="nowrap">
+          {t("pagination.showing", { from, to, total })}
+        </Text>
+        <Select
+          w="auto"
+          value={perPage}
+          onChange={handlePageSizeChange}
+          size="sm"
+          aria-label={t("itemsPerPage")}
+          display={{ base: "none", sm: "block" }}
+        >
+          {[10, 20, 30, 50, 100].map((n) => (
+            <option key={n} value={n}>
+              {t("pagination.perPage", { count: n })}
+            </option>
+          ))}
+        </Select>
+      </HStack>
 
-      <ButtonGroup size="sm" isAttached variant="outline" order={{ base: 1, md: 2 }}>
-        <Button
-          leftIcon={<PrevIcon />}
+      <ButtonGroup size="sm" variant="outline" spacing={1}>
+        <IconButton
+          aria-label={t("previous")}
+          icon={<PrevIcon />}
           onClick={changePage.bind(null, page - 1)}
           isDisabled={page === 0 || noPages === 0}
-        >
-          {t("previous")}
-        </Button>
+        />
         {pages.map((pageIndex) => {
           if (typeof pageIndex === "string")
-            return <Button key={pageIndex}>...</Button>;
+            return (
+              <Text key={pageIndex} px={1} color="text-muted" alignSelf="center">
+                …
+              </Text>
+            );
+          const on = (pageIndex as number) === page;
           return (
             <Button
               key={pageIndex}
-              variant={(pageIndex as number) === page ? "solid" : "outline"}
+              variant={on ? "solid" : "ghost"}
+              colorScheme={on ? "primary" : "gray"}
+              aria-current={on ? "page" : undefined}
+              minW="30px"
+              px={2}
               onClick={changePage.bind(null, pageIndex)}
             >
               {(pageIndex as number) + 1}
             </Button>
           );
         })}
-
-        <Button
-          rightIcon={<NextIcon />}
+        <IconButton
+          aria-label={t("next")}
+          icon={<NextIcon />}
           onClick={changePage.bind(null, page + 1)}
           isDisabled={page + 1 === noPages || noPages === 0}
-        >
-          {t("next")}
-        </Button>
+        />
       </ButtonGroup>
     </HStack>
   );

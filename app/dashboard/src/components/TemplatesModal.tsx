@@ -4,6 +4,7 @@ import {
   Checkbox,
   FormControl,
   FormHelperText,
+  Flex,
   FormLabel,
   HStack,
   Input,
@@ -125,7 +126,7 @@ export const TemplatesModal: FC = () => {
 
   return (
     <Modal isOpen={isOpen} onClose={() => { setModal(null); setEditing(null); }} size="2xl" scrollBehavior="inside">
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+      <ModalOverlay />
       <ModalContent mx="3">
         <ModalHeader>{t("templates.title")}</ModalHeader>
         <ModalCloseButton />
@@ -195,11 +196,11 @@ export const TemplatesModal: FC = () => {
           ) : (
             <>
               <HStack justifyContent="space-between" mb={3}>
-                <Text fontSize="sm" color="gray.500">{t("templates.description")}</Text>
+                <Text fontSize="sm" color="text-muted">{t("templates.description")}</Text>
                 <Button size="sm" colorScheme="primary" onClick={() => startEdit()}>{t("templates.add")}</Button>
               </HStack>
               {isLoading ? <Spinner /> : !templates?.length ? (
-                <Text fontSize="sm" color="gray.500">{t("templates.none")}</Text>
+                <Text fontSize="sm" color="text-muted">{t("templates.none")}</Text>
               ) : (
                 <TableContainer>
                   <Table size="sm">
@@ -245,11 +246,25 @@ export const TemplatePicker: FC<{ onApply: (template: UserTemplate) => void }> =
   const { data: templates } = useTemplates();
   if (!templates?.length) return null;
   return (
-    <FormControl mb={3}>
+    <Flex
+      wrap="wrap"
+      align="center"
+      gap={3}
+      px={6}
+      py="14px"
+      bg="surface-subtle"
+      borderBottomWidth="1px"
+      borderColor="border"
+    >
+      <FormLabel htmlFor="template-picker" m={0} fontSize="13px" fontWeight={600}>
+        {t("templates.startFrom")}
+      </FormLabel>
       <Select
+        id="template-picker"
+        flex="1"
+        minW="220px"
         size="sm"
-        aria-label={t("templates.apply")}
-        placeholder={t("templates.apply")}
+        placeholder={t("templates.none")}
         onChange={(e) => {
           const template = templates.find((tpl) => String(tpl.id) === e.target.value);
           if (template) onApply(template);
@@ -261,6 +276,6 @@ export const TemplatePicker: FC<{ onApply: (template: UserTemplate) => void }> =
           </option>
         ))}
       </Select>
-    </FormControl>
+    </Flex>
   );
 };

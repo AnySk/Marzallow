@@ -61,12 +61,12 @@ export const ExpiredCleanupModal: FC = () => {
 
   return (
     <Modal isOpen={isOpen} onClose={() => setModal(null)} size="lg" scrollBehavior="inside">
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+      <ModalOverlay />
       <ModalContent mx="3">
         <ModalHeader>{t("cleanup.title")}</ModalHeader>
         <ModalCloseButton />
         <ModalBody>
-          <Text fontSize="sm" color="gray.500" mb={3}>
+          <Text fontSize="sm" color="text-muted" mb={3}>
             {t("cleanup.description")}
           </Text>
           <FormControl mb={4}>

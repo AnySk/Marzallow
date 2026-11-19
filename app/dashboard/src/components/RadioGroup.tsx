@@ -19,7 +19,7 @@ import {
   UseRadioProps,
   VStack,
 } from "@chakra-ui/react";
-import { EllipsisVerticalIcon } from "@heroicons/react/24/outline";
+import { ChevronDownIcon as EllipsisVerticalIcon } from "@heroicons/react/24/outline";
 import { shadowsocksMethods, XTLSFlows } from "constants/Proxies";
 import {
   InboundType,
@@ -33,6 +33,8 @@ import {
   useFormContext,
   useWatch,
 } from "react-hook-form";
+
+const PROTOCOL_LABEL: Record<string, string> = { vless: "VLESS", vmess: "VMess", trojan: "Trojan", shadowsocks: "Shadowsocks" };
 
 const SettingsIcon = chakra(EllipsisVerticalIcon, {
   baseStyle: {
@@ -56,37 +58,19 @@ const InboundCard: FC<
         position="relative"
         {...htmlProps}
         cursor="pointer"
-        borderRadius="sm"
+        borderRadius="md"
         border="1px solid"
-        borderColor={"gray.200"}
-        _dark={{
-          borderColor: "gray.600",
-        }}
+        borderColor="border-strong"
+        bg="surface"
         display="flex"
         alignItems="center"
         justifyContent="space-between"
         overflow="hidden"
         _checked={{
-          bg: "gray.50",
-          outline: "2px",
-          boxShadow: "outline",
-          outlineColor: "primary.500",
-          borderColor: "transparent",
+          bg: "surface-selected",
+          borderColor: "accent",
           fontWeight: "medium",
-          _dark: {
-            bg: "gray.750",
-            borderColor: "transparent",
-          },
-          "& p": {
-            opacity: 1,
-          },
         }}
-        __css={{
-          "& p": {
-            opacity: 0.8,
-          },
-        }}
-        textTransform="capitalize"
         px={3}
         py={2}
         fontWeight="medium"
@@ -96,9 +80,7 @@ const InboundCard: FC<
           size="sm"
           w="full"
           maxW="full"
-          color="gray.700"
-          _dark={{ color: "gray.300" }}
-          textTransform="uppercase"
+          color="text"
           colorScheme="primary"
           className="inbound-item"
           isChecked={inputProps.checked}
@@ -113,13 +95,16 @@ const InboundCard: FC<
             gap={2}
             overflow="hidden"
           >
-            <Text isTruncated {...getLabelProps()} fontSize="xs">
-              {inbound.tag} <Text as="span">({inbound.network})</Text>
+            <Text isTruncated {...getLabelProps()} fontSize="12px" fontFamily="mono">
+              {inbound.tag}{" "}
+              <Text as="span" color="text-muted">
+                ({inbound.network})
+              </Text>
             </Text>
           </HStack>
         </Checkbox>
         {inbound.tls && inbound.tls != "none" && (
-          <Badge fontSize="xs" opacity=".8" size="xs">
+          <Badge fontSize="11px" bg="neutral-bg" color="neutral-fg" textTransform="uppercase">
             {inbound.tls}
           </Badge>
         )}
@@ -188,21 +173,15 @@ const RadioCard: FC<
   return (
     <AccordionItem
       isDisabled={!protocolHasInbound}
-      borderRadius="md"
+      borderRadius="10px"
       borderStyle="solid"
       border="1px"
-      borderColor="gray.200"
-      bg={shouldBeDisabled ? "gray.100" : "transparent"}
-      _dark={{
-        borderColor: "gray.600",
-        bg: shouldBeDisabled ? "#364154" : "transparent",
-      }}
+      borderColor="border-strong"
+      bg={shouldBeDisabled ? "surface-subtle" : "surface"}
+      overflow="hidden"
       _checked={{
-        bg: "gray.50",
-        outline: "2px",
-        boxShadow: "outline",
-        outlineColor: "primary.500",
-        borderColor: "transparent",
+        bg: "surface-selected",
+        borderColor: "accent",
       }}
       {...getCheckboxProps()}
     >
@@ -227,11 +206,7 @@ const RadioCard: FC<
           borderRadius="md"
           cursor={shouldBeDisabled ? "not-allowed" : "pointer"}
           _checked={{
-            fontWeight: "medium",
-            _dark: {
-              bg: "gray.750",
-              borderColor: "transparent",
-            },
+            "& .proto-check": { bg: "primary.500", borderColor: "primary.500", color: "white" },
             "& > svg": {
               opacity: 1,
               "&.checked": {
@@ -259,12 +234,30 @@ const RadioCard: FC<
               opacity: 0.8,
             },
           }}
-          textTransform="capitalize"
-          px={3}
-          py={2}
-          fontWeight="medium"
+          pl="44px"
+          pr={14}
+          py={3}
           {...getCheckboxProps()}
         >
+          <Box
+            className="proto-check"
+            position="absolute"
+            left="14px"
+            top="15px"
+            w="16px"
+            h="16px"
+            borderRadius="4px"
+            borderWidth="1.5px"
+            borderColor="gray.400"
+            bg="surface"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            fontSize="11px"
+            lineHeight={1}
+          >
+            {isSelected ? "✓" : ""}
+          </Box>
           <AccordionButton
             display={
               inputProps.checked && protocolHasInbound ? "block" : "none"
@@ -274,31 +267,31 @@ const RadioCard: FC<
             color="primary.200"
             position="absolute"
             right="3"
-            top="3"
+            top="2.5"
             w="auto"
             p={0}
             onClick={toggleAccordion}
           >
-            <IconButton size="sm" aria-label="inbound settings">
+            <IconButton size="sm" variant="ghost" aria-label={t("userDialog.protocolOptions", { protocol: PROTOCOL_LABEL[title] || title })}>
               <SettingsIcon />
             </IconButton>
           </AccordionButton>
 
-          <Text
-            fontSize="sm"
-            color={shouldBeDisabled ? "gray.400" : "gray.700"}
-            _dark={{ color: shouldBeDisabled ? "gray.500" : "gray.300" }}
-            {...getLabelProps()}
-          >
-            {title}
+          <Text fontWeight={600} color={shouldBeDisabled ? "text-muted" : "text"} {...getLabelProps()}>
+            {PROTOCOL_LABEL[title] || title}
           </Text>
-          <Text
-            fontWeight="medium"
-            color={shouldBeDisabled ? "gray.400" : "gray.600"}
-            _dark={{ color: shouldBeDisabled ? "gray.500" : "gray.400" }}
-            fontSize="xs"
-          >
-            {description}
+          <Text color="text-muted" fontSize="12px">
+            {!protocolHasInbound
+              ? t("userDialog.noInbounds")
+              : isSelected
+              ? t("userDialog.inboundsSelected", {
+                  count: (inBoundDefaultValue || []).length,
+                  total: (useDashboard.getState().inbounds.get(title as ProtocolType) || []).length,
+                })
+              : t("userDialog.inboundsAvailable", {
+                  count: (useDashboard.getState().inbounds.get(title as ProtocolType) || []).length,
+                })}
+            {description && !isSelected ? ` · ${description}` : ""}
           </Text>
         </Box>
       </Box>
@@ -307,7 +300,6 @@ const RadioCard: FC<
         pb={3}
         roundedBottom="5px"
         pt={3}
-        _dark={{ bg: inputProps.checked && "gray.750" }}
       >
         <VStack
           w="full"
@@ -315,10 +307,11 @@ const RadioCard: FC<
           borderStyle="solid"
           borderWidth="1px"
           borderRadius="md"
+          borderColor="border"
+          bg="surface"
           pl={3}
           pr={3}
           pt={1.5}
-          _dark={{ bg: "gray.700" }}
         >
           <VStack alignItems="flex-start" w="full">
             <Text fontSize="sm">{t("inbound")}</Text>

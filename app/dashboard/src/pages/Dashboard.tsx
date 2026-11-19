@@ -1,10 +1,10 @@
-import { Box, VStack } from "@chakra-ui/react";
 import { AlertsBar } from "components/AlertsBar";
+import { AppShell } from "components/AppShell";
 import { BulkActionsBar } from "components/BulkActionsBar";
 import { DeleteUserModal } from "components/DeleteUserModal";
 import { Filters } from "components/Filters";
-import { Footer } from "components/Footer";
 import { Header } from "components/Header";
+import { Panel } from "components/ui";
 import { QRCodeDialog } from "components/QRCodeDialog";
 import { ResetAllUsageModal } from "components/ResetAllUsageModal";
 import { ResetUserUsageModal } from "components/ResetUserUsageModal";
@@ -50,34 +50,40 @@ export const Dashboard: FC = () => {
     fetchInbounds();
   }, []);
   return (
-    <VStack justifyContent="space-between" minH="100vh" p="6" rowGap={4}>
-      <Box w="full">
-        <Header />
-        <Statistics mt="4" />
-        <AlertsBar />
+    <AppShell>
+      <Header />
+      <AlertsBar />
+      <Statistics />
+      <Panel
+        as="section"
+        aria-label="Users"
+        overflow="hidden"
+        bg={{ base: "transparent", md: "surface" }}
+        borderWidth={{ base: 0, md: "1px" }}
+        mx={{ base: -4, md: 0 }}
+      >
         <Filters />
         <UsersTable />
-        <BulkActionsBar />
-        <UserDialog />
-        <DeleteUserModal />
-        <QRCodeDialog />
-        <ResetUserUsageModal />
-        <RevokeSubscriptionModal />
-        <ResetAllUsageModal />
-        <Suspense fallback={null}>
-          <HostsDialog />
-          <NodesDialog />
-          <NodesUsage />
-          <CoreSettingsModal />
-          <AdminsModal />
-          <TemplatesModal />
-          <AnalyticsModal />
-          <ExpiredCleanupModal />
-          <SettingsModal />
-        </Suspense>
-      </Box>
-      <Footer />
-    </VStack>
+      </Panel>
+      <BulkActionsBar />
+      <UserDialog />
+      <DeleteUserModal />
+      <QRCodeDialog />
+      <ResetUserUsageModal />
+      <RevokeSubscriptionModal />
+      <ResetAllUsageModal />
+      <Suspense fallback={null}>
+        <HostsDialog />
+        <NodesDialog />
+        <NodesUsage />
+        <CoreSettingsModal />
+        <AdminsModal />
+        <TemplatesModal />
+        <AnalyticsModal />
+        <ExpiredCleanupModal />
+        <SettingsModal />
+      </Suspense>
+    </AppShell>
   );
 };
 

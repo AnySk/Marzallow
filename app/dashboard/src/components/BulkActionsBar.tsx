@@ -67,24 +67,25 @@ export const BulkActionsBar: FC = () => {
   return (
     <Box
       position="sticky"
-      bottom={4}
-      zIndex="docked"
-      mt={4}
-      p={3}
+      bottom={{ base: "84px", md: 4 }}
+      zIndex="sticky"
+      px={3}
+      py="10px"
       borderWidth="1px"
-      borderRadius="lg"
-      bg="var(--chakra-colors-chakra-body-bg)"
-      boxShadow="lg"
+      borderColor="border"
+      borderRadius="xl"
+      bg="surface"
+      boxShadow="float"
       data-testid="bulk-actions"
     >
       <Wrap align="center" spacing={2}>
-        <Text fontSize="sm" fontWeight="medium" mr={2}>
+        <Text fontSize="14px" fontWeight={600} mr={2}>
           {t("bulk.selected", { count: selected.length })}
         </Text>
-        <Button size="xs" variant="outline" isDisabled={busy} onClick={() => run("disable")}>
+        <Button size="sm" variant="outline" isDisabled={busy} onClick={() => run("disable")}>
           {t("bulk.disable")}
         </Button>
-        <Button size="xs" variant="outline" isDisabled={busy} onClick={() => run("enable")}>
+        <Button size="sm" variant="outline" isDisabled={busy} onClick={() => run("enable")}>
           {t("bulk.enable")}
         </Button>
         <AmountAction
@@ -100,7 +101,7 @@ export const BulkActionsBar: FC = () => {
           onApply={(gb) => run("add_data", { data_limit: Math.round(gb * GB) })}
         />
         <ConfirmButton
-          size="xs"
+          size="sm"
           variant="outline"
           colorScheme="orange"
           isDisabled={busy}
@@ -110,7 +111,7 @@ export const BulkActionsBar: FC = () => {
           {t("bulk.resetUsage")}
         </ConfirmButton>
         <ConfirmButton
-          size="xs"
+          size="sm"
           variant="outline"
           colorScheme="orange"
           isDisabled={busy}
@@ -120,14 +121,14 @@ export const BulkActionsBar: FC = () => {
           {t("bulk.revoke")}
         </ConfirmButton>
         <ConfirmButton
-          size="xs"
+          size="sm"
           isDisabled={busy}
           message={t("bulk.confirmDelete", { count: selected.length })}
           onConfirm={() => run("delete")}
         >
           {t("delete")}
         </ConfirmButton>
-        <Button size="xs" variant="ghost" onClick={clearSelected}>
+        <Button size="sm" variant="ghost" onClick={clearSelected}>
           {t("bulk.clear")}
         </Button>
       </Wrap>
@@ -149,7 +150,7 @@ const AmountAction: FC<{
       {({ onClose }) => (
         <>
           <PopoverTrigger>
-            <Button size="xs" variant="outline" isDisabled={isDisabled}>
+            <Button size="sm" variant="outline" isDisabled={isDisabled}>
               {label}
             </Button>
           </PopoverTrigger>

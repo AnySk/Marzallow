@@ -45,7 +45,7 @@ export const ConfirmButton: FC<ConfirmButtonProps> = ({
         isCentered
         size="sm"
       >
-        <AlertDialogOverlay bg="blackAlpha.300">
+        <AlertDialogOverlay>
           <AlertDialogContent mx={3}>
             <AlertDialogBody pt={5} fontSize="sm">
               {message}

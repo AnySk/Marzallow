@@ -115,7 +115,7 @@ export const UserExtras: FC<{ user: User }> = ({ user }) => {
               : t("userExtras.neverUpdated")}
           </Text>
           {user.sub_last_user_agent && (
-            <Text fontSize="xs" color="gray.500" wordBreak="break-all" mt={1}>
+            <Text fontSize="xs" color="text-muted" wordBreak="break-all" mt={1}>
               {user.sub_last_user_agent}
             </Text>
           )}
@@ -152,7 +152,7 @@ export const UserExtras: FC<{ user: User }> = ({ user }) => {
       </SimpleGrid>
 
       <Section title={t("nextPlan.title")}>
-        <Text fontSize="xs" color="gray.500" mb={2}>
+        <Text fontSize="xs" color="text-muted" mb={2}>
           {t("nextPlan.description")}
         </Text>
         <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
@@ -204,7 +204,7 @@ export const UserExtras: FC<{ user: User }> = ({ user }) => {
 
       <Section title={t("userExtras.resetHistory")}>
         {!logs?.length ? (
-          <Text fontSize="sm" color="gray.500">
+          <Text fontSize="sm" color="text-muted">
             {t("userExtras.noResets")}
           </Text>
         ) : (

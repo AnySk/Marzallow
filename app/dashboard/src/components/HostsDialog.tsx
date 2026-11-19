@@ -93,19 +93,13 @@ export const DownIcon = chakra(ArrowDownIcon, {
 
 const Select = chakra(ChakraSelect, {
   baseStyle: {
-    bg: "white",
-    _dark: {
-      bg: "gray.700",
-    },
+    bg: "surface",
   },
 });
 
 const Input = chakra(CustomInput, {
   baseStyle: {
-    bg: "white",
-    _dark: {
-      bg: "gray.700",
-    },
+    bg: "surface",
   },
 });
 
@@ -120,7 +114,7 @@ const InfoIcon = chakra(InformationCircleIcon, {
   baseStyle: {
     w: 4,
     h: 4,
-    color: "gray.400",
+    color: "text-muted",
     cursor: "pointer",
   },
 });
@@ -243,8 +237,7 @@ const AccordionInbound: FC<AccordionInboundType> = ({
   return (
     <AccordionItem
       border="1px solid"
-      _dark={{ borderColor: "gray.600" }}
-      _light={{ borderColor: "gray.200" }}
+      borderColor="border"
       borderRadius="4px"
       p={1}
       w="full"
@@ -256,8 +249,7 @@ const AccordionInbound: FC<AccordionInboundType> = ({
           fontSize="sm"
           flex="1"
           textAlign="left"
-          color="gray.700"
-          _dark={{ color: "gray.300" }}
+          color="text-2"
         >
           {hostKey}
         </Text>
@@ -287,8 +279,7 @@ const AccordionInbound: FC<AccordionInboundType> = ({
                   id={host.id}
                   key={host.id}
                   border="1px solid"
-                  _dark={{ borderColor: "gray.600", bg: "#273142" }}
-                  _light={{ borderColor: "gray.200", bg: "#fcfbfb" }}
+                  borderColor="border" bg="surface-subtle"
                   p={2}
                   w="full"
                   borderRadius="4px"
@@ -556,8 +547,7 @@ const AccordionInbound: FC<AccordionInboundType> = ({
                             flex="3"
                             align="start"
                             fontSize="xs"
-                            color="gray.600"
-                            _dark={{ color: "gray.500" }}
+                            color="text-muted"
                             pl={1}
                           >
                             {t("hostsDialog.advancedOptions")}
@@ -1368,12 +1358,17 @@ export const HostsDialog: FC = () => {
 
   return (
     <Modal isOpen={isEditingHosts} onClose={onClose}>
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+      <ModalOverlay />
       <ModalContent mx="3" w="fit-content" maxW="3xl">
-        <ModalHeader pt={6}>
-          <Icon color="primary">
-            <ModalIcon color="white" />
-          </Icon>
+        <ModalHeader pt={5}>
+          <HStack spacing={3}>
+            <Icon color="primary">
+              <ModalIcon />
+            </Icon>
+            <Text fontSize="17px" fontWeight={700}>
+              {t("nav.hosts")}
+            </Text>
+          </HStack>
         </ModalHeader>
         <ModalCloseButton mt={3} />
         <ModalBody w="440px" pb={3} pt={3}>
