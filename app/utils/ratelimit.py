@@ -2,7 +2,9 @@
 import threading
 import time
 from collections import defaultdict, deque
-from typing import Deque, Dict
+from typing import Callable, Deque, Dict, Union
+
+Limit = Union[int, Callable[[], int]]
 
 
 class LoginRateLimiter:
@@ -12,11 +14,20 @@ class LoginRateLimiter:
     locked-out client can try again `window` seconds after its first failure.
     """
 
-    def __init__(self, max_failures: int, window: int):
-        self.max_failures = max_failures
-        self.window = window
+    def __init__(self, max_failures: Limit, window: Limit):
+        # ints, or callables read on every check (settings editable at runtime)
+        self._max_failures = max_failures
+        self._window = window
         self._failures: Dict[str, Deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
+
+    @property
+    def max_failures(self) -> int:
+        return self._max_failures() if callable(self._max_failures) else self._max_failures
+
+    @property
+    def window(self) -> int:
+        return self._window() if callable(self._window) else self._window
 
     @property
     def enabled(self) -> bool:

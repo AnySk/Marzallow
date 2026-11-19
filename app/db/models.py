@@ -354,3 +354,13 @@ class NotificationReminder(Base):
     threshold = Column(Integer, nullable=True)
     expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Setting(Base):
+    """Dashboard-editable setting overriding the .env value (see app/settings.py)."""
+    __tablename__ = "settings"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(JSON, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = Column(String(34), nullable=True)

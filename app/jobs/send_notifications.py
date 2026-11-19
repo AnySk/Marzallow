@@ -10,18 +10,20 @@ from app import logger, on_shutdown, scheduler
 from app.db import GetDB
 from app.db.models import NotificationReminder
 from app.utils.notification import queue
-from config import (JOB_SEND_NOTIFICATIONS_INTERVAL,
-                    NUMBER_OF_RECURRENT_NOTIFICATIONS,
-                    RECURRENT_NOTIFICATIONS_TIMEOUT, WEBHOOK_ADDRESS,
-                    WEBHOOK_SECRET)
+from config import JOB_SEND_NOTIFICATIONS_INTERVAL
+from app.settings import settings as runtime_settings
 
 session = Session()
 
-headers = {"x-webhook-secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else None
+
+
+def _headers():
+    # read on every send: the secret can be changed from the dashboard
+    return {"x-webhook-secret": runtime_settings.WEBHOOK_SECRET} if runtime_settings.WEBHOOK_SECRET else None
 
 
 def send(data: List[Dict[Any, Any]]) -> bool:
-    """Send the notification to the webhook address provided by WEBHOOK_ADDRESS
+    """Send the notification to the webhook address provided by runtime_settings.WEBHOOK_ADDRESS
 
     Args:
         data (List[Dict[Any, Any]]): list of json encoded notifications
@@ -31,7 +33,7 @@ def send(data: List[Dict[Any, Any]]) -> bool:
     """
 
     result_list = []
-    for webhook in WEBHOOK_ADDRESS:
+    for webhook in runtime_settings.WEBHOOK_ADDRESS:
         result = send_req(w_address=webhook, data=data)
         result_list.append(result)
     if True in result_list:
@@ -43,7 +45,7 @@ def send(data: List[Dict[Any, Any]]) -> bool:
 def send_req(w_address: str, data):
     try:
         logger.debug(f"Sending {len(data)} webhook updates to {w_address}")
-        r = session.post(w_address, json=data, headers=headers)
+        r = session.post(w_address, json=data, headers=_headers())
         if r.ok:
             return True
         logger.error(r)
@@ -53,13 +55,13 @@ def send_req(w_address: str, data):
 
 
 def send_notifications():
-    if not queue:
+    if not queue or not runtime_settings.WEBHOOK_ADDRESS:
         return
 
     notifications_to_send = list()
     try:
         while (notification := queue.popleft()):
-            if (notification.tries > NUMBER_OF_RECURRENT_NOTIFICATIONS):
+            if (notification.tries > runtime_settings.NUMBER_OF_RECURRENT_NOTIFICATIONS):
                 continue
             if notification.send_at > time.time():
                 queue.append(notification)  # add it to the queue again for the next check
@@ -72,10 +74,10 @@ def send_notifications():
         return
     if not send([jsonable_encoder(notif) for notif in notifications_to_send]):
         for notification in notifications_to_send:
-            if (notification.tries + 1) > NUMBER_OF_RECURRENT_NOTIFICATIONS:
+            if (notification.tries + 1) > runtime_settings.NUMBER_OF_RECURRENT_NOTIFICATIONS:
                 continue
             notification.tries += 1
-            notification.send_at = time.time() + RECURRENT_NOTIFICATIONS_TIMEOUT  # retry later
+            notification.send_at = time.time() + runtime_settings.RECURRENT_NOTIFICATIONS_TIMEOUT  # retry later
             queue.append(notification)
 
 
@@ -85,14 +87,16 @@ def delete_expired_reminders() -> None:
         db.commit()
 
 
-if WEBHOOK_ADDRESS:
-    @on_shutdown
-    def app_shutdown():
+# Always scheduled: the webhook address can be set from the dashboard at any
+# time; send_notifications() does nothing while it's empty.
+@on_shutdown
+def app_shutdown():
+    if queue and runtime_settings.WEBHOOK_ADDRESS:
         logger.info("Sending pending notifications before shutdown...")
         send_notifications()
 
-    logger.info("Send webhook job started")
-    scheduler.add_job(send_notifications, "interval",
-                      seconds=JOB_SEND_NOTIFICATIONS_INTERVAL,
-                      replace_existing=True)
-    scheduler.add_job(delete_expired_reminders, "interval", hours=2, start_date=dt.utcnow() + td(minutes=1))
+
+scheduler.add_job(send_notifications, "interval",
+                  seconds=JOB_SEND_NOTIFICATIONS_INTERVAL,
+                  replace_existing=True)
+scheduler.add_job(delete_expired_reminders, "interval", hours=2, start_date=dt.utcnow() + td(minutes=1))

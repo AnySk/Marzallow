@@ -11,21 +11,18 @@ from app.models.admin import Admin, AdminCreate, AdminModify, Token
 from app.utils import report, responses
 from app.utils.jwt import create_admin_token
 from app.utils.ratelimit import LoginRateLimiter
-from config import (
-    LOGIN_LOCKOUT_SECONDS,
-    LOGIN_MAX_FAILED_ATTEMPTS,
-    LOGIN_NOTIFY_WHITE_LIST,
-    SUDOERS,
-    UVICORN_UDS_TRUST_FORWARDED_FOR,
-)
+from config import SUDOERS, UVICORN_UDS_TRUST_FORWARDED_FOR
+from app.settings import settings as runtime_settings
 
 router = APIRouter(tags=["Admin"], prefix="/api", responses={401: responses._401})
 
 
 # Failed logins per (client IP, account), plus a looser cap per client IP so
 # spraying many usernames from one address is limited too.
-login_limiter = LoginRateLimiter(LOGIN_MAX_FAILED_ATTEMPTS, LOGIN_LOCKOUT_SECONDS)
-ip_login_limiter = LoginRateLimiter(LOGIN_MAX_FAILED_ATTEMPTS * 4, LOGIN_LOCKOUT_SECONDS)
+login_limiter = LoginRateLimiter(lambda: runtime_settings.LOGIN_MAX_FAILED_ATTEMPTS,
+                                 lambda: runtime_settings.LOGIN_LOCKOUT_SECONDS)
+ip_login_limiter = LoginRateLimiter(lambda: runtime_settings.LOGIN_MAX_FAILED_ATTEMPTS * 4,
+                                    lambda: runtime_settings.LOGIN_LOCKOUT_SECONDS)
 
 
 UNKNOWN_IP = "Unknown"
@@ -94,7 +91,7 @@ def admin_token(
         # Notify on the first failure and when the lockout starts, not on every
         # attempt (brute-force bots otherwise flood the channel). Never forward
         # the attempted password.
-        if failures <= 1 or failures == LOGIN_MAX_FAILED_ATTEMPTS:
+        if failures <= 1 or failures == login_limiter.max_failures:
             report.login(form_data.username, "🔒", client_ip, False)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -103,7 +100,7 @@ def admin_token(
         )
 
     login_limiter.reset(account_key)
-    if not ip_known or client_ip not in LOGIN_NOTIFY_WHITE_LIST:
+    if not ip_known or client_ip not in runtime_settings.LOGIN_NOTIFY_WHITE_LIST:
         report.login(form_data.username, "🔒", client_ip, True)
 
     return Token(access_token=create_admin_token(form_data.username, dbadmin.is_sudo))

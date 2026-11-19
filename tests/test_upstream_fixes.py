@@ -73,7 +73,6 @@ def limiters(monkeypatch):
     per_account, per_ip = LoginRateLimiter(3, 60), LoginRateLimiter(8, 60)
     monkeypatch.setattr(admin_router, "login_limiter", per_account)
     monkeypatch.setattr(admin_router, "ip_login_limiter", per_ip)
-    monkeypatch.setattr(admin_router, "LOGIN_MAX_FAILED_ATTEMPTS", 3)
     return per_account, per_ip
 
 

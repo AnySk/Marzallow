@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 // Dialogs added on top of the original dashboard, plus the users selected for
 // bulk actions. Kept separate from DashboardContext to keep that store small.
-export type FeatureModal = "admins" | "templates" | "analytics" | "cleanup" | null;
+export type FeatureModal = "admins" | "templates" | "analytics" | "cleanup" | "settings" | null;
 
 type FeaturesState = {
   openModal: FeatureModal;

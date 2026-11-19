@@ -8,6 +8,7 @@ import pytest
 import telebot
 
 import app.utils.report as report
+import config
 from app.db import GetDB, crud
 from app.models.user import UserStatus
 
@@ -114,7 +115,7 @@ def test_revoke_subscription_reported(handlers, make_user):
 def test_notification_flags_respected(handlers, make_user, monkeypatch):
     make_user("tg_quiet")
     _reset(handlers)
-    monkeypatch.setattr(report, "NOTIFY_USER_SUB_REVOKED", False)
+    monkeypatch.setattr(config, "NOTIFY_USER_SUB_REVOKED", False)  # settings fall back to config
     handlers.confirm_user_command(_call("confirm:revoke_sub:tg_quiet"))
     assert handlers.sent.webhook == [] and handlers.sent.discord == []
 

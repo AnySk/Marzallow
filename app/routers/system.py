@@ -13,8 +13,9 @@ from app.models.proxy import ProxyHost, ProxyInbound, ProxyTypes
 from app.models.system import SystemStats
 from app.models.user import UserStatus
 from app.utils import responses
-from config import NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT
+
 from app.utils.system import cpu_usage, memory_usage, realtime_bandwidth
+from app.settings import settings as runtime_settings
 
 router = APIRouter(tags=["System"], prefix="/api", responses={401: responses._401})
 
@@ -127,8 +128,8 @@ def get_system_alerts(
 ):
     """Things that need attention: users about to expire or run out of data,
     limited/expired users, and nodes that aren't connected."""
-    days = days or max(NOTIFY_DAYS_LEFT or [3])
-    percent = percent or min(NOTIFY_REACHED_USAGE_PERCENT or [80])
+    days = days or max(runtime_settings.NOTIFY_DAYS_LEFT or [3])
+    percent = percent or min(runtime_settings.NOTIFY_REACHED_USAGE_PERCENT or [80])
     owners = None if admin.is_sudo else [admin.username]
 
     def count(**filters) -> int:

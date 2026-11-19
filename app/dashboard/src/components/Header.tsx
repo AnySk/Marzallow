@@ -14,6 +14,7 @@ import {
   ArrowLeftOnRectangleIcon,
   ArrowTrendingUpIcon,
   Bars3Icon,
+  AdjustmentsHorizontalIcon,
   ChartPieIcon,
   DocumentDuplicateIcon,
   TrashIcon,
@@ -56,6 +57,7 @@ const AdminsIcon = chakra(UsersIcon, iconProps);
 const TemplatesIcon = chakra(DocumentDuplicateIcon, iconProps);
 const AnalyticsIcon = chakra(ArrowTrendingUpIcon, iconProps);
 const CleanupIcon = chakra(TrashIcon, iconProps);
+const PanelSettingsIcon = chakra(AdjustmentsHorizontalIcon, iconProps);
 
 export const Header: FC<HeaderProps> = ({ actions }) => {
   const { userData, getUserIsSuccess, getUserIsPending } = useGetUser();
@@ -108,6 +110,14 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
             <MenuList minW="170px" zIndex={99999} className="menuList">
               {isSudo() && (
                 <>
+                  <MenuItem
+                    maxW="170px"
+                    fontSize="sm"
+                    icon={<PanelSettingsIcon />}
+                    onClick={() => setModal("settings")}
+                  >
+                    {t("header.settings")}
+                  </MenuItem>
                   <MenuItem
                     maxW="170px"
                     fontSize="sm"

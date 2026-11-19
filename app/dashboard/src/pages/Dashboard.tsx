@@ -31,6 +31,9 @@ const AdminsModal = lazy(() =>
 const TemplatesModal = lazy(() =>
   import("components/TemplatesModal").then((m) => ({ default: m.TemplatesModal }))
 );
+const SettingsModal = lazy(() =>
+  import("components/SettingsModal").then((m) => ({ default: m.SettingsModal }))
+);
 const AnalyticsModal = lazy(() =>
   import("components/AnalyticsModal").then((m) => ({ default: m.AnalyticsModal }))
 );
@@ -70,6 +73,7 @@ export const Dashboard: FC = () => {
           <TemplatesModal />
           <AnalyticsModal />
           <ExpiredCleanupModal />
+          <SettingsModal />
         </Suspense>
       </Box>
       <Footer />

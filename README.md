@@ -39,6 +39,8 @@ This is a personal fork of [Marzban](https://github.com/Gozargah/Marzban) by Goz
   - Quick filters (expiring soon, over 80% used, online now, by owner), CSV export, a traffic chart with top
     users, and alert chips for users about to expire or run out of data and for disconnected nodes.
   - Per user: notes in the table, last subscription fetch and client app, and usage reset history.
+  - A Settings page for notifications, webhooks, subscription headers, auto-delete and login security, applied
+    without editing `.env` or restarting.
   - No external font requests; works under any `DASHBOARD_PATH` without exposing assets at the site root;
     the login page loads about half the JavaScript it used to.
 
@@ -143,6 +145,11 @@ the `dev` branch publish `:dev`.
 ## Configuration
 
 Settings come from environment variables or a `.env` file in the working directory.
+
+Notification, webhook, subscription, auto-delete and login-security settings can also be changed by sudo admins
+under **Settings** in the dashboard. Those values are stored in the database, take precedence over `.env` and
+apply immediately; "reset to .env" removes the override. Infrastructure settings (database, ports, TLS, paths,
+sudo account, Telegram bot) are only read from `.env`.
 
 | Variable | Description |
 | --- | --- |

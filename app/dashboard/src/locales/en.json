@@ -304,5 +304,22 @@
   "userExtras.resetHistory": "Usage reset history",
   "userExtras.noResets": "No resets yet.",
   "userExtras.resetAt": "Reset at",
-  "userExtras.usedBeforeReset": "Used before reset"
+  "userExtras.usedBeforeReset": "Used before reset",
+  "header.settings": "Settings",
+  "settings.title": "Settings",
+  "settings.description": "Changes apply immediately and are stored in the database; anything you don't change here keeps its .env value.",
+  "settings.group.notifications": "Notifications",
+  "settings.group.webhook": "Webhook",
+  "settings.group.subscription": "Subscription",
+  "settings.group.users": "Users",
+  "settings.group.security": "Security",
+  "settings.changed": "changed here",
+  "settings.fromEnv": "from .env",
+  "settings.resetToEnv": "reset to .env",
+  "settings.secretSet": "Set (enter a new value to replace it)",
+  "settings.secretNotSet": "Not set",
+  "settings.commaSeparated": "Comma-separated",
+  "settings.unsaved": "Unsaved changes: {{count}}",
+  "settings.save": "Save",
+  "settings.saved": "Settings saved"
 }

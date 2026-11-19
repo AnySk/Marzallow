@@ -10,7 +10,8 @@ from math import ceil
 from typing import Optional, Union
 
 
-from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES, SUDOERS
+from config import SUDOERS
+from app.settings import settings as runtime_settings
 
 
 @lru_cache(maxsize=None)
@@ -36,8 +37,8 @@ def create_admin_token(username: str, is_sudo=False) -> str:
     data = {"sub": username, "access": "sudo" if is_sudo else "admin", "iat": datetime.utcnow()}
     if is_sudo and (fingerprint := sudoer_password_fingerprint(username)):
         data["spf"] = fingerprint
-    if JWT_ACCESS_TOKEN_EXPIRE_MINUTES > 0:
-        expire = datetime.utcnow() + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+    if runtime_settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES > 0:
+        expire = datetime.utcnow() + timedelta(minutes=runtime_settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
         data["exp"] = expire
     encoded_jwt = jwt.encode(data, get_secret_key(), algorithm="HS256")
     return encoded_jwt
