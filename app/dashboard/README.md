@@ -1,40 +1,39 @@
-# Dashboard UI for marzban
+# Dashboard
+
+React + Chakra UI admin dashboard for the panel, built with Vite. It is served by the backend at
+`/dashboard/` from `app/dashboard/build` (built by the Docker image or `../../build_dashboard.sh`).
 
 ## Requirements
 
-For development, you will only need Node.js installed on your environement.
+Node.js 22+ (Vite 8 needs 20.19 or newer).
 
-### Node
+## Development
 
-[Node](http://nodejs.org/) is really easy to install & now include [NPM](https://npmjs.org/).
-This project has been developed on the Nodejs v16.17.0 so if you faced any issue during installation that may related to the node version, install Node with version >= v16.17.0.
+The easiest way is to set `DEBUG=true` in the backend's `.env` and run `uv run python main.py`: the backend then
+starts this dev server on port 3000 and allows it through CORS.
 
-## Install
+To run the dev server against some other backend:
 
-    git clone https://github.com/gozargah/marz-manager.git
-    cd marz-manager
-    yarn install
+```bash
+npm ci
+cp example.env .env        # set VITE_BASE_API, e.g. http://127.0.0.1:8000/api/
+npm run dev
+```
 
-### Configure app
+The backend must list the dev server's origin in `ALLOWED_ORIGINS`.
 
-Copy `example.env` to `.env` then set the backend api address:
+| Variable | Description |
+| --- | --- |
+| VITE_BASE_API | Base URL of the backend API (default in production builds: `/api/`) |
 
-    VITE_BASE_API=https://somewhere.com/
+## Build
 
-#### Environment variables
+```bash
+npm run build              # type-check + production build
+ANALYZE=1 npm run build    # also writes stats.html (bundle treemap)
+```
 
-| Name          | Description                                                                          |
-| ------------- | ------------------------------------------------------------------------------------ |
-| VITE_BASE_API | The api url of the deployed backend ([Marzban](https://github.com/gozargah/Marzban)) |
+## Notes
 
-## Start development server
-
-    yarn dev
-
-## Simple build for production
-
-    yarn build
-
-## Contribution
-
-Feel free to contribute. Go on and fork the project. After commiting the changes, make a PR. It means a lot to us.
+- UI strings live in `src/locales/en.json` (English only).
+- Server state uses TanStack Query; local UI state uses zustand stores in `src/contexts`.
