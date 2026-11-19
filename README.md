@@ -154,8 +154,33 @@ Set `TELEGRAM_API_TOKEN` and `TELEGRAM_ADMIN_ID` to manage users and get notific
 
 ### Nodes
 
-[Marzban-node](https://github.com/Gozargah/Marzban-node) runs Xray on extra servers controlled by this panel.
-Add them in the dashboard under **Nodes**.
+A node runs Xray on another server, controlled by this panel, so users can connect through it too. The same
+image runs as a node with the `node` command:
+
+```bash
+sudo mkdir -p /opt/marzallow-node /var/lib/marzban-node
+cd /opt/marzallow-node
+curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/AnySk/Marzallow/master/docker-compose.node.yml
+# Dashboard -> Nodes -> "Download certificate", saved as /var/lib/marzban-node/ssl_client_cert.pem
+docker compose up -d
+```
+
+Then add the server under **Nodes** in the dashboard (port `62050`, API port `62051`). From source, run
+`uv run python main.py node` (or `python -m node`) instead of `main.py`.
+
+| Variable | Default |
+| --- | --- |
+| `SSL_CLIENT_CERT_FILE` | `/var/lib/marzban-node/ssl_client_cert.pem`: the panel's certificate; only that panel can connect |
+| `SSL_CERT_FILE`, `SSL_KEY_FILE` | `/var/lib/marzban-node/ssl_cert.pem`, `ssl_key.pem`: the node's own, created on first start |
+| `SERVICE_HOST`, `SERVICE_PORT` | `0.0.0.0`, `62050` |
+| `XRAY_API_HOST`, `XRAY_API_PORT` | `0.0.0.0`, `62051` (only the connected panel's IP is allowed) |
+| `XRAY_EXECUTABLE_PATH`, `XRAY_ASSETS_PATH` | `/usr/local/bin/xray`, `/usr/local/share/xray` |
+| `INBOUNDS` | Run only these inbounds (comma-separated tags); all by default |
+
+Nodes speak [Marzban-node](https://github.com/Gozargah/Marzban-node)'s protocol and use its settings and data
+directory, so either works with either panel, and an existing Marzban-node switches over by changing its image
+to `ghcr.io/anysk/marzallow:latest` with `command: node`. Only the REST protocol is served (Marzban-node's
+default); the panel still connects to older RPyC nodes.
 
 ### Webhooks
 

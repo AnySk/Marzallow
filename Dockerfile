@@ -70,4 +70,6 @@ RUN chmod +x /code/marzallow-cli.py \
     && ln -s /code/marzallow-cli.py /usr/bin/marzban-cli \
     && marzallow-cli completion install --shell bash
 
-CMD ["bash", "-c", "alembic upgrade head; python main.py"]
+ENTRYPOINT ["/code/docker-entrypoint.sh"]
+# `docker run <image> node` runs a node instead of the panel
+CMD ["panel"]

@@ -380,14 +380,14 @@ const NodeForm: NodeFormType = ({
                   label={t(
                     !showCertificate
                       ? "nodes.show-certificate"
-                      : "nodes.show-certificate"
+                      : "nodes.hide-certificate"
                   )}
                 >
                   <IconButton
                     aria-label={t(
                       !showCertificate
                         ? "nodes.show-certificate"
-                        : "nodes.show-certificate"
+                        : "nodes.hide-certificate"
                     )}
                     onClick={setShowCertificate.bind(null, !showCertificate)}
                     colorScheme="whiteAlpha"

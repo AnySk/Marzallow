@@ -4,7 +4,8 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from OpenSSL import crypto
+
+from node.certificate import generate_certificate  # noqa: F401  (the panel's node-client certificate)
 
 
 def get_cert_SANs(cert: bytes):
@@ -28,22 +29,3 @@ def get_x25519_public_key(private_key: str) -> str:
         raise ValueError("X25519 private key must be 32 bytes")
     public = X25519PrivateKey.from_private_bytes(raw).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
     return base64.urlsafe_b64encode(public).decode().rstrip('=')
-
-
-def generate_certificate():
-    k = crypto.PKey()
-    k.generate_key(crypto.TYPE_RSA, 4096)
-    cert = crypto.X509()
-    cert.get_subject().CN = "Gozargah"
-    cert.gmtime_adj_notBefore(0)
-    cert.gmtime_adj_notAfter(100*365*24*60*60)
-    cert.set_issuer(cert.get_subject())
-    cert.set_pubkey(k)
-    cert.sign(k, 'sha512')
-    cert_pem = crypto.dump_certificate(crypto.FILETYPE_PEM, cert).decode("utf-8")
-    key_pem = crypto.dump_privatekey(crypto.FILETYPE_PEM, k).decode("utf-8")
-
-    return {
-        "cert": cert_pem,
-        "key": key_pem
-    }
