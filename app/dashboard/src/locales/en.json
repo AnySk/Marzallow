@@ -321,5 +321,6 @@
   "settings.commaSeparated": "Comma-separated",
   "settings.unsaved": "Unsaved changes: {{count}}",
   "settings.save": "Save",
-  "settings.saved": "Settings saved"
+  "settings.saved": "Settings saved",
+  "core.invalidJson": "The configuration is not valid JSON: {{error}}"
 }

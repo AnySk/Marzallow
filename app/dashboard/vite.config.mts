@@ -24,7 +24,7 @@ export default defineConfig(({ command }) => ({
             { name: "react", test: /node_modules[\\/](react|react-dom|scheduler|react-router|react-router-dom)[\\/]/, priority: 40 },
             { name: "ui", test: /node_modules[\\/](@chakra-ui|@emotion|framer-motion|@popperjs|@zag-js)[\\/]/, priority: 30 },
             { name: "charts", test: /node_modules[\\/](apexcharts|react-apexcharts)[\\/]/, priority: 20 },
-            { name: "editor", test: /node_modules[\\/](jsoneditor|ace-builds|brace|react-json-editor-ajrm)[\\/]/, priority: 20 },
+            { name: "editor", test: /node_modules[\\/](@codemirror|@lezer|codemirror|crelt|style-mod|w3c-keyname|jsonc-parser)[\\/]/, priority: 20 },
             { name: "vendor", test: /node_modules[\\/]/, priority: 10 },
           ],
         },

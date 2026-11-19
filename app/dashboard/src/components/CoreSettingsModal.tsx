@@ -40,8 +40,7 @@ import { ReadyState } from "react-use-websocket";
 import { useWebSocket } from "react-use-websocket/dist/lib/use-websocket";
 import { getAuthToken } from "utils/authStorage";
 import { Icon } from "./Icon";
-import { JsonEditor } from "./JsonEditor";
-import "./JsonEditor/themes.js";
+import { CoreConfigEditor } from "./CoreConfigEditor";
 import { useNodesQuery } from "contexts/NodesContext";
 
 export const MAX_NUMBER_OF_LOGS = 500;
@@ -140,12 +139,14 @@ const CoreSettingModalContent: FC = () => {
   const [logs, setLogs] = useState<string[]>([]);
   const { t } = useTranslation();
   const toast = useToast();
+  // the editor works on text; it is parsed (and must be valid JSON) on save
+  const configText = config ? JSON.stringify(config, null, 2) : "";
   const form = useForm({
-    defaultValues: { config: config || {} },
+    defaultValues: { config: configText },
   });
 
   useEffect(() => {
-    if (config) form.setValue("config", config);
+    if (config) form.setValue("config", configText);
   }, [config]);
 
   useEffect(() => {
@@ -198,7 +199,20 @@ const CoreSettingModalContent: FC = () => {
     mutationFn: restartCore,
   });
 
-  const handleOnSave = ({ config }: any) => {
+  const handleOnSave = ({ config: text }: { config: string }) => {
+    let config;
+    try {
+      config = JSON.parse(text);
+    } catch (e) {
+      toast({
+        title: t("core.invalidJson", { error: (e as Error).message }),
+        status: "error",
+        isClosable: true,
+        position: "top",
+        duration: 5000,
+      });
+      return;
+    }
     updateConfig(config)
       .then(() => {
         toast({
@@ -246,33 +260,40 @@ const CoreSettingModalContent: FC = () => {
               {t("core.configuration")}{" "}
               {isLoading && <CircularProgress isIndeterminate size="15px" />}
             </FormLabel>
-            <HStack gap={0}>
+            <HStack gap={1}>
               <Tooltip label="Xray Version" placement="top">
                 <Badge height="100%" textTransform="lowercase">
                   {version && `v${version}`}
                 </Badge>
               </Tooltip>
+              <IconButton
+                size="xs"
+                aria-label="full screen"
+                variant="ghost"
+                onClick={handleFullScreen}
+              >
+                {!isFullScreen ? <FullScreenIcon /> : <ExitFullScreenIcon />}
+              </IconButton>
             </HStack>
           </HStack>
-          <Box position="relative" ref={editorRef} minHeight="300px">
+          <Box
+            position="relative"
+            ref={editorRef}
+            minHeight="300px"
+            bg="var(--chakra-colors-chakra-body-bg)"
+            p={isFullScreen ? 4 : 0}
+          >
             <Controller
               control={form.control}
               name="config"
               render={({ field }) => (
-                <JsonEditor json={config} onChange={field.onChange} />
+                <CoreConfigEditor
+                  value={configText}
+                  onChange={field.onChange}
+                  height={isFullScreen ? "calc(100vh - 2rem)" : undefined}
+                />
               )}
             />
-            <IconButton
-              size="xs"
-              aria-label="full screen"
-              variant="ghost"
-              position="absolute"
-              top="2"
-              right="4"
-              onClick={handleFullScreen}
-            >
-              {!isFullScreen ? <FullScreenIcon /> : <ExitFullScreenIcon />}
-            </IconButton>
           </Box>
         </FormControl>
         <FormControl mt="4">
@@ -386,7 +407,7 @@ export const CoreSettingsModal: FC = () => {
   const { t } = useTranslation();
 
   return (
-    <Modal isOpen={isEditingCore} onClose={onClose} size="3xl">
+    <Modal isOpen={isEditingCore} onClose={onClose} size="6xl">
       <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
       <ModalContent mx="3" w="full">
         <ModalHeader pt={6}>

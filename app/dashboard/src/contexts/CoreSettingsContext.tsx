@@ -5,7 +5,7 @@ type CoreSettingsStore = {
   isLoading: boolean;
   isPostLoading: boolean;
   fetchCoreSettings: () => void;
-  updateConfig: (json: string) => Promise<void>;
+  updateConfig: (config: object) => Promise<void>;
   restartCore: () => Promise<void>;
   version: string | null;
   started: boolean | null;

@@ -41,6 +41,10 @@ This is a personal fork of [Marzban](https://github.com/Gozargah/Marzban) by Goz
   - Per user: notes in the table, last subscription fetch and client app, and usage reset history.
   - A Settings page for notifications, webhooks, subscription headers, auto-delete and login security, applied
     without editing `.env` or restarting.
+  - An Xray config editor that knows Xray's config format: autocompletion of fields and allowed values, warnings
+    for unknown fields or invalid values, hover docs, and a side panel listing the fields of the object under the
+    cursor with pickers for their values. The schema is generated from the Go source of the shipped Xray version
+    (`app/dashboard/src/components/CoreConfigEditor/xray-schema.json`); regenerate it when bumping Xray.
   - No external font requests; works under any `DASHBOARD_PATH` without exposing assets at the site root;
     the login page loads about half the JavaScript it used to.
 
