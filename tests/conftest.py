@@ -14,7 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-_tmp = tempfile.mkdtemp(prefix="marzban-tests-")
+_tmp = tempfile.mkdtemp(prefix="marzallow-tests-")
 # the API can rewrite the xray config, so tests work on a copy
 shutil.copy(FIXTURES / "xray_config.json", f"{_tmp}/xray_config.json")
 

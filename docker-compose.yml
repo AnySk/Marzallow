@@ -1,6 +1,6 @@
 services:
-  marzban:
-    image: ghcr.io/anysk/marzbanv2:latest
+  marzallow:
+    image: ghcr.io/anysk/marzallow:latest
     restart: always
     env_file: .env
     network_mode: host

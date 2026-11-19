@@ -1,6 +1,6 @@
 # Contributing
 
-This is a personal fork of [Marzban](https://github.com/Gozargah/Marzban). Issues and pull requests are welcome.
+Marzallow is a fork of [Marzban](https://github.com/Gozargah/Marzban). Issues and pull requests are welcome.
 For questions about upstream features, see the upstream project.
 
 ## Setup

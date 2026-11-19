@@ -31,7 +31,6 @@ const schema = z.object({
 
 export const LogoIcon = chakra(Logo, {
   baseStyle: {
-    strokeWidth: "10px",
     w: 12,
     h: 12,
   },

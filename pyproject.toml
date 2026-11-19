@@ -1,7 +1,7 @@
 [project]
-name = "marzban"
+name = "marzallow"
 version = "0.8.4"
-description = "Proxy management panel powered by Xray (personal fork of Gozargah/Marzban)"
+description = "Marzallow: proxy management panel for Xray-core (fork of Gozargah/Marzban)"
 readme = "README.md"
 license = "AGPL-3.0-only"
 requires-python = ">=3.12"

@@ -22,22 +22,22 @@ jobs:
       mysql:
         image: ${{ matrix.database == 'mysql' && 'mysql:8.4' || '' }}
         env:
-          MYSQL_ROOT_PASSWORD: marzban
-          MYSQL_DATABASE: marzban
+          MYSQL_ROOT_PASSWORD: marzallow
+          MYSQL_DATABASE: marzallow
         ports: ["3306:3306"]
-        options: --health-cmd "mysqladmin ping -pmarzban" --health-interval 5s --health-retries 20
+        options: --health-cmd "mysqladmin ping -pmarzallow" --health-interval 5s --health-retries 20
       postgres:
         image: ${{ matrix.database == 'postgres' && 'postgres:17' || '' }}
         env:
-          POSTGRES_USER: marzban
-          POSTGRES_PASSWORD: marzban
-          POSTGRES_DB: marzban
+          POSTGRES_USER: marzallow
+          POSTGRES_PASSWORD: marzallow
+          POSTGRES_DB: marzallow
         ports: ["5432:5432"]
         options: --health-cmd pg_isready --health-interval 5s --health-retries 20
     env:
       TEST_DATABASE_URL: >-
-        ${{ matrix.database == 'mysql' && 'mysql+pymysql://root:marzban@127.0.0.1:3306/marzban'
-        || matrix.database == 'postgres' && 'postgresql://marzban:marzban@127.0.0.1:5432/marzban'
+        ${{ matrix.database == 'mysql' && 'mysql+pymysql://root:marzallow@127.0.0.1:3306/marzallow'
+        || matrix.database == 'postgres' && 'postgresql://marzallow:marzallow@127.0.0.1:5432/marzallow'
         || '' }}
     steps:
       - uses: actions/checkout@v5

@@ -1142,7 +1142,7 @@ wheels = [
 ]
 
 [[package]]
-name = "marzban"
+name = "marzallow"
 version = "0.8.4"
 source = { virtual = "." }
 dependencies = [
