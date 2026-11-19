@@ -7,8 +7,9 @@ const GB = 1024 ** 3;
 
 const csvCell = (value: unknown): string => {
   const text = value === null || value === undefined ? "" : String(value);
-  // quote everything; neutralise spreadsheet formulas (=, +, -, @)
-  const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  // Quote everything and neutralise spreadsheet formulas. Spreadsheets skip
+  // leading whitespace/control characters, so check after them too.
+  const safe = /^[\s\u0000-\u001f]*[=+\-@|]/.test(text) || /^[\t\r\n]/.test(text) ? `'${text}` : text;
   return `"${safe.replace(/"/g, '""')}"`;
 };
 
