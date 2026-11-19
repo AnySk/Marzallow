@@ -124,6 +124,10 @@ class User(BaseModel):
 class UserCreate(User):
     username: str
     status: UserStatusCreate = None
+    # validate_default: when "inbounds" is omitted, validate_inbounds must still
+    # run to enable every inbound of the selected protocols. Without it Pydantic v2
+    # skips the validator and the user ends up with all inbounds excluded.
+    inbounds: Dict[ProxyTypes, List[str]] = Field(default_factory=dict, validate_default=True)
     model_config = ConfigDict(json_schema_extra={
         "example": {
             "username": "user1234",

@@ -1,0 +1,6 @@
+#!/bin/bash
+case "$1" in
+  version) echo "Xray 25.10.15 (Xray, Penetrates Everything.) stub" ;;
+  x25519) echo "Private key: aPrivKeyStubaPrivKeyStubaPrivKeyStubaPrivKe"; echo "Public key: aPubKeyStubaPubKeyStubaPubKeyStubaPubKeyStu" ;;
+  run) cat >/dev/null; echo "stub xray running"; exec sleep 3600 ;;
+esac

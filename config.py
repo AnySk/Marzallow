@@ -19,7 +19,10 @@ DASHBOARD_PATH = config("DASHBOARD_PATH", default="/dashboard/")
 DEBUG = config("DEBUG", default=False, cast=bool)
 DOCS = config("DOCS", default=False, cast=bool)
 
-ALLOWED_ORIGINS = config("ALLOWED_ORIGINS", default="*").split(",")
+# Comma-separated origins allowed to call the API from a browser. Empty (default)
+# means same-origin only, which is all the bundled dashboard needs. Use "*" to
+# allow any origin (the API uses bearer tokens, so credentials are never allowed).
+ALLOWED_ORIGINS = [o.strip() for o in config("ALLOWED_ORIGINS", default="").split(",") if o.strip()]
 
 VITE_BASE_API = f"http://127.0.0.1:{UVICORN_PORT}/api/" \
     if DEBUG and config("VITE_BASE_API", default="/api/") == "/api/" \

@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 from fastapi.encoders import jsonable_encoder
 from requests import Session
 
-from app import app, logger, scheduler
+from app import logger, on_shutdown, scheduler
 from app.db import GetDB
 from app.db.models import NotificationReminder
 from app.utils.notification import queue
@@ -86,7 +86,7 @@ def delete_expired_reminders() -> None:
 
 
 if WEBHOOK_ADDRESS:
-    @app.on_event("shutdown")
+    @on_shutdown
     def app_shutdown():
         logger.info("Sending pending notifications before shutdown...")
         send_notifications()
