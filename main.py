@@ -1,3 +1,11 @@
+import sys
+
+if __name__ == "__main__" and sys.argv[1:2] == ["node"]:
+    # `python main.py node` runs this server as a node instead of the panel
+    # (decided before the panel, its database and settings are imported).
+    from node.__main__ import main as run_node
+    sys.exit(run_node())
+
 import click
 import logging
 import os

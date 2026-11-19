@@ -11,5 +11,6 @@ case "$1" in
       exit 23
     fi
     echo "stub xray running"
+    echo "[Warning] core: Xray 25.10.15 started"
     exec sleep 3600 ;;
 esac
