@@ -4,7 +4,10 @@ import { defineConfig } from "vite";
 import svgr from "vite-plugin-svgr";
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // Relative asset URLs: the built dashboard works under any DASHBOARD_PATH
+  // and its assets are only served below it (nothing at /statics/).
+  base: command === "build" ? "./" : "/",
   resolve: { tsconfigPaths: true },
   plugins: [
     react(),
@@ -28,4 +31,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

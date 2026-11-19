@@ -11,7 +11,13 @@ from app.models.admin import Admin, AdminCreate, AdminModify, Token
 from app.utils import report, responses
 from app.utils.jwt import create_admin_token
 from app.utils.ratelimit import LoginRateLimiter
-from config import LOGIN_LOCKOUT_SECONDS, LOGIN_MAX_FAILED_ATTEMPTS, LOGIN_NOTIFY_WHITE_LIST, SUDOERS
+from config import (
+    LOGIN_LOCKOUT_SECONDS,
+    LOGIN_MAX_FAILED_ATTEMPTS,
+    LOGIN_NOTIFY_WHITE_LIST,
+    SUDOERS,
+    UVICORN_UDS_TRUST_FORWARDED_FOR,
+)
 
 router = APIRouter(tags=["Admin"], prefix="/api", responses={401: responses._401})
 
@@ -22,20 +28,25 @@ login_limiter = LoginRateLimiter(LOGIN_MAX_FAILED_ATTEMPTS, LOGIN_LOCKOUT_SECOND
 ip_login_limiter = LoginRateLimiter(LOGIN_MAX_FAILED_ATTEMPTS * 4, LOGIN_LOCKOUT_SECONDS)
 
 
+UNKNOWN_IP = "Unknown"
+
+
 def get_client_ip(request: Request) -> str:
-    """The client's IP address.
+    """The client's IP address, or UNKNOWN_IP.
 
     Over TCP, uvicorn resolves X-Forwarded-For itself, trusting only proxies in
-    FORWARDED_ALLOW_IPS (default 127.0.0.1). On a UNIX socket there is no peer
-    address and only a local reverse proxy can connect; it appends the real
-    client address as the *last* X-Forwarded-For entry (clients can only add
-    entries before it), so that one is used.
+    FORWARDED_ALLOW_IPS (default 127.0.0.1). A UNIX socket has no peer address;
+    only if the operator confirms the proxy appends the client address
+    (UVICORN_UDS_TRUST_FORWARDED_FOR) is the last X-Forwarded-For entry used -
+    clients can only add entries before it.
     """
     if request.client and request.client.host:
         return request.client.host
-    forwarded_for = request.headers.get("X-Forwarded-For", "")
-    last_hop = forwarded_for.split(",")[-1].strip()
-    return last_hop or "Unknown"
+    if UVICORN_UDS_TRUST_FORWARDED_FOR:
+        last_hop = request.headers.get("X-Forwarded-For", "").split(",")[-1].strip()
+        if last_hop:
+            return last_hop
+    return UNKNOWN_IP
 
 
 def _account_key(db: Session, username: str) -> str:
@@ -63,7 +74,11 @@ def admin_token(
     # rather than not at all; see FORWARDED_ALLOW_IPS in .env.example.
     account_key = f"{client_ip}|{_account_key(db, form_data.username)}"
 
-    retry_after = max(login_limiter.retry_after(account_key), ip_login_limiter.retry_after(client_ip))
+    # The per-IP cap needs a real IP: with an unknown one it would be a single
+    # global counter that anyone could exhaust to lock everybody out.
+    ip_known = client_ip != UNKNOWN_IP
+    retry_after = max(login_limiter.retry_after(account_key),
+                      ip_login_limiter.retry_after(client_ip) if ip_known else 0)
     if retry_after:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -74,7 +89,8 @@ def admin_token(
     dbadmin = validate_admin(db, form_data.username, form_data.password)
     if not dbadmin:
         failures = login_limiter.record_failure(account_key)
-        ip_login_limiter.record_failure(client_ip)
+        if ip_known:
+            ip_login_limiter.record_failure(client_ip)
         # Notify on the first failure and when the lockout starts, not on every
         # attempt (brute-force bots otherwise flood the channel). Never forward
         # the attempted password.
@@ -87,7 +103,7 @@ def admin_token(
         )
 
     login_limiter.reset(account_key)
-    if client_ip not in LOGIN_NOTIFY_WHITE_LIST:
+    if not ip_known or client_ip not in LOGIN_NOTIFY_WHITE_LIST:
         report.login(form_data.username, "🔒", client_ip, True)
 
     return Token(access_token=create_admin_token(form_data.username, dbadmin.is_sudo))

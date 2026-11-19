@@ -186,6 +186,23 @@ export const Sort: FC<SortType> = ({ sort, column }) => {
   return null;
 };
 type UsersTableProps = {} & TableProps;
+// The user's note under the name, so accounts with technical names are
+// recognisable without opening each one.
+const UserNote: FC<{ note?: string | null }> = ({ note }) =>
+  note ? (
+    <Text
+      fontSize="xs"
+      color="gray.500"
+      _dark={{ color: "gray.400" }}
+      isTruncated
+      maxW="260px"
+      title={note}
+      mt={0.5}
+    >
+      {note}
+    </Text>
+  ) : null;
+
 export const UsersTable: FC<UsersTableProps> = (props) => {
   const {
     filters,
@@ -357,6 +374,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                           <OnlineBadge lastOnline={user.online_at} />
                           <Text isTruncated>{user.username}</Text>
                         </div>
+                        <UserNote note={user.note} />
                       </Td>
                       <Td borderBottom={0} minW="50px" pl={0} pr={0}>
                         <StatusBadge
@@ -596,6 +614,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                       {user.username}
                       <OnlineStatus lastOnline={user.online_at} />
                     </div>
+                    <UserNote note={user.note} />
                   </Td>
                   <Td width="400px" minW="150px">
                     <StatusBadge

@@ -126,17 +126,35 @@ def test_password_spraying_capped_per_ip(client, limiters):
     assert _login(client, "sudo", "sudopass").status_code == 429
 
 
-def test_unix_socket_uses_proxy_appended_address():
+def _uds_request(xff):
     from starlette.requests import Request
+
+    headers = [(b"x-forwarded-for", xff.encode())] if xff else []
+    return Request({"type": "http", "client": None, "headers": headers})
+
+
+def test_unix_socket_ignores_forwarded_for_by_default():
     from app.routers.admin import get_client_ip
 
-    def request(xff):
-        headers = [(b"x-forwarded-for", xff.encode())] if xff else []
-        return Request({"type": "http", "client": None, "headers": headers})
+    assert get_client_ip(_uds_request("203.0.113.7")) == "Unknown"
 
+
+def test_unix_socket_uses_proxy_appended_address_when_trusted(monkeypatch):
+    from app.routers import admin as admin_router
+
+    monkeypatch.setattr(admin_router, "UVICORN_UDS_TRUST_FORWARDED_FOR", True)
     # the client prepended a fake address; the proxy appended the real one
-    assert get_client_ip(request("6.6.6.6, 203.0.113.7")) == "203.0.113.7"
-    assert get_client_ip(request("")) == "Unknown"
+    assert admin_router.get_client_ip(_uds_request("6.6.6.6, 203.0.113.7")) == "203.0.113.7"
+    assert admin_router.get_client_ip(_uds_request("")) == "Unknown"
+
+
+def test_unknown_ip_does_not_lock_out_everyone(client, limiters, monkeypatch):
+    from app.routers import admin as admin_router
+
+    monkeypatch.setattr(admin_router, "get_client_ip", lambda request: admin_router.UNKNOWN_IP)
+    for i in range(10):  # more than the per-IP cap, spread over many usernames
+        _login(client, f"bot{i}", "x")
+    assert _login(client, "sudo", "sudopass").status_code == 200
 
 
 # --- #2083 / #2066: subscription link changes on every refresh -------------
