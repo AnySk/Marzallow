@@ -1,14 +1,19 @@
-from typing import Dict, List, Union
+import time
+from datetime import datetime
+from typing import Dict, List, Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from app import __version__, xray
 from app.db import Session, crud, get_db
 from app.models.admin import Admin
+from app.models.node import NodeStatus
 from app.models.proxy import ProxyHost, ProxyInbound, ProxyTypes
 from app.models.system import SystemStats
 from app.models.user import UserStatus
 from app.utils import responses
+from config import NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT
 from app.utils.system import cpu_usage, memory_usage, realtime_bandwidth
 
 router = APIRouter(tags=["System"], prefix="/api", responses={401: responses._401})
@@ -101,3 +106,46 @@ def modify_hosts(
     xray.hosts.update()
 
     return {tag: crud.get_hosts(db, tag) for tag in xray.config.inbounds_by_tag}
+
+
+class SystemAlerts(BaseModel):
+    expiring_soon: int        # active users expiring within `days`
+    near_limit: int           # active users that used >= `percent` of their data limit
+    limited: int
+    expired: int
+    disconnected_nodes: List[str] = []  # sudo admins only
+    days: int
+    percent: int
+
+
+@router.get("/system/alerts", response_model=SystemAlerts)
+def get_system_alerts(
+    days: Optional[int] = Query(None, gt=0, le=365),
+    percent: Optional[int] = Query(None, gt=0, le=100),
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.get_current),
+):
+    """Things that need attention: users about to expire or run out of data,
+    limited/expired users, and nodes that aren't connected."""
+    days = days or max(NOTIFY_DAYS_LEFT or [3])
+    percent = percent or min(NOTIFY_REACHED_USAGE_PERCENT or [80])
+    owners = None if admin.is_sudo else [admin.username]
+
+    def count(**filters) -> int:
+        _, total = crud.get_users(db, limit=1, admins=owners, return_with_count=True, **filters)
+        return total
+
+    now = int(time.time())
+    disconnected = []
+    if admin.is_sudo:
+        disconnected = [node.name for node in crud.get_nodes(db)
+                        if node.status in (NodeStatus.error, NodeStatus.connecting)]
+    return SystemAlerts(
+        expiring_soon=count(status=UserStatus.active, expire_before=now + days * 86400),
+        near_limit=count(status=UserStatus.active, usage_ratio_above=percent / 100),
+        limited=count(status=UserStatus.limited),
+        expired=count(status=UserStatus.expired),
+        disconnected_nodes=disconnected,
+        days=days,
+        percent=percent,
+    )

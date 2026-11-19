@@ -371,3 +371,36 @@ class UserUsagesResponse(BaseModel):
 
 class UsersUsagesResponse(BaseModel):
     usages: List[UserUsageResponse]
+
+
+class UsersBulkActionType(str, Enum):
+    disable = "disable"
+    enable = "enable"
+    delete = "delete"
+    reset_usage = "reset_usage"
+    revoke_sub = "revoke_sub"
+    extend = "extend"          # add `days` to the expiry date
+    add_data = "add_data"      # add `data_limit` bytes to the data limit
+
+
+class UsersBulkAction(BaseModel):
+    usernames: List[str] = Field(min_length=1, max_length=1000)
+    action: UsersBulkActionType
+    days: Optional[int] = Field(None, gt=0, le=3650)
+    data_limit: Optional[int] = Field(None, gt=0)
+
+
+class UsersBulkResult(BaseModel):
+    done: List[str] = []
+    skipped: Dict[str, str] = {}  # username -> reason
+
+
+class UserResetLog(BaseModel):
+    used_traffic_at_reset: int
+    reset_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DailyUsage(BaseModel):
+    date: str  # YYYY-MM-DD (UTC)
+    used_traffic: int

@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Union
 
@@ -9,8 +10,13 @@ from app.db import Session, crud, get_db
 from app.dependencies import get_expired_users_list, get_validated_user, validate_dates
 from app.models.admin import Admin
 from app.models.user import (
+    DailyUsage,
     UserCreate,
     UserModify,
+    UserResetLog,
+    UsersBulkAction,
+    UsersBulkActionType,
+    UsersBulkResult,
     UserResponse,
     UsersResponse,
     UserStatus,
@@ -211,6 +217,9 @@ def get_users(
     owner: Union[List[str], None] = Query(None, alias="admin"),
     status: UserStatus = None,
     sort: str = None,
+    expire_before: Optional[int] = Query(None, description="Only users expiring before this UNIX time"),
+    usage_percent_above: Optional[float] = Query(None, ge=0, le=100, description="Only users that used at least this % of their data limit"),
+    online_within: Optional[int] = Query(None, gt=0, description="Only users online within the last N seconds"),
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.get_current),
 ):
@@ -235,10 +244,106 @@ def get_users(
         status=status,
         sort=sort,
         admins=owner if admin.is_sudo else [admin.username],
+        expire_before=expire_before,
+        usage_ratio_above=usage_percent_above / 100 if usage_percent_above is not None else None,
+        online_since=datetime.utcnow() - timedelta(seconds=online_within) if online_within else None,
         return_with_count=True,
     )
 
     return {"users": users, "total": count}
+
+
+@router.post("/users/bulk", response_model=UsersBulkResult, responses={400: responses._400})
+def bulk_users_action(
+    body: UsersBulkAction,
+    bg: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.get_current),
+):
+    """Apply one action to many users.
+
+    Each user goes through the same code path as the single-user endpoint
+    (xray updates, status changes, notifications). Users the admin doesn't own,
+    or for which the action doesn't apply, are reported in `skipped`.
+    """
+    if body.action == UsersBulkActionType.extend and not body.days:
+        raise HTTPException(status_code=400, detail="`days` is required for extend")
+    if body.action == UsersBulkActionType.add_data and not body.data_limit:
+        raise HTTPException(status_code=400, detail="`data_limit` is required for add_data")
+
+    result = UsersBulkResult()
+    now = int(time.time())
+    for username in dict.fromkeys(body.usernames):  # de-duplicated, order kept
+        dbuser = crud.get_user(db, username)
+        if not dbuser:
+            result.skipped[username] = "not found"
+            continue
+        if not (admin.is_sudo or (dbuser.admin and dbuser.admin.username == admin.username)):
+            result.skipped[username] = "not allowed"
+            continue
+
+        action = body.action
+        try:
+            if action == UsersBulkActionType.delete:
+                remove_user(bg, db, dbuser, admin)
+            elif action == UsersBulkActionType.reset_usage:
+                reset_user_data_usage(bg, db, dbuser, admin)
+            elif action == UsersBulkActionType.revoke_sub:
+                revoke_user_subscription(bg, db, dbuser, admin)
+            elif action == UsersBulkActionType.disable:
+                if dbuser.status == UserStatus.disabled:
+                    result.skipped[username] = "already disabled"
+                    continue
+                modify_user(UserModify(status=UserStatus.disabled), bg, db, dbuser, admin)
+            elif action == UsersBulkActionType.enable:
+                if dbuser.status != UserStatus.disabled:
+                    result.skipped[username] = "not disabled"
+                    continue
+                modify_user(UserModify(status=UserStatus.active), bg, db, dbuser, admin)
+            elif action == UsersBulkActionType.extend:
+                if not dbuser.expire:
+                    result.skipped[username] = "no expiry date"
+                    continue
+                new_expire = max(dbuser.expire, now) + body.days * 86400
+                modify_user(UserModify(expire=new_expire), bg, db, dbuser, admin)
+            elif action == UsersBulkActionType.add_data:
+                if not dbuser.data_limit:
+                    result.skipped[username] = "unlimited data"
+                    continue
+                modify_user(UserModify(data_limit=dbuser.data_limit + body.data_limit), bg, db, dbuser, admin)
+        except HTTPException as err:
+            result.skipped[username] = str(err.detail)
+            continue
+        result.done.append(username)
+
+    logger.info(f'Bulk "{body.action.value}" by "{admin.username}": '
+                f'{len(result.done)} done, {len(result.skipped)} skipped')
+    return result
+
+
+@router.get("/user/{username}/reset-logs", response_model=List[UserResetLog])
+def get_user_reset_logs(
+    db: Session = Depends(get_db),
+    dbuser: UserResponse = Depends(get_validated_user),
+):
+    """A user's data usage resets (manual, periodic or by next plan), newest first."""
+    return crud.get_user_reset_logs(db, dbuser)
+
+
+@router.get("/users/usage/daily", response_model=List[DailyUsage])
+def get_daily_usage(
+    start: str = "",
+    end: str = "",
+    username: Optional[str] = None,
+    owner: Union[List[str], None] = Query(None, alias="admin"),
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.get_current),
+):
+    """Total user traffic per day (defaults to the last 30 days)."""
+    start, end = validate_dates(start, end)
+    return crud.get_daily_usage(db, start, end,
+                                admins=owner if admin.is_sudo else [admin.username],
+                                username=username)
 
 
 @router.post("/users/reset", responses={403: responses._403, 404: responses._404})

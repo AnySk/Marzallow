@@ -1,3 +1,4 @@
+import time
 from datetime import datetime as dt
 from datetime import timedelta as td
 from typing import Any, Dict, List
@@ -60,7 +61,7 @@ def send_notifications():
         while (notification := queue.popleft()):
             if (notification.tries > NUMBER_OF_RECURRENT_NOTIFICATIONS):
                 continue
-            if notification.send_at > dt.utcnow().timestamp():
+            if notification.send_at > time.time():
                 queue.append(notification)  # add it to the queue again for the next check
                 continue
             notifications_to_send.append(notification)
@@ -74,8 +75,7 @@ def send_notifications():
             if (notification.tries + 1) > NUMBER_OF_RECURRENT_NOTIFICATIONS:
                 continue
             notification.tries += 1
-            notification.send_at = (  # schedule notification for n seconds later
-                dt.utcnow() + td(seconds=RECURRENT_NOTIFICATIONS_TIMEOUT)).timestamp()
+            notification.send_at = time.time() + RECURRENT_NOTIFICATIONS_TIMEOUT  # retry later
             queue.append(notification)
 
 

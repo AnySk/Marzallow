@@ -1,3 +1,4 @@
+import time
 import base64
 import random
 import secrets
@@ -165,7 +166,7 @@ def setup_format_variables(extra_data: dict) -> dict:
 
     if user_status != UserStatus.on_hold:
         if expire_timestamp is not None and expire_timestamp >= 0:
-            seconds_left = expire_timestamp - int(dt.utcnow().timestamp())
+            seconds_left = expire_timestamp - int(time.time())
             expire_datetime = dt.fromtimestamp(expire_timestamp)
             expire_date = expire_datetime.date()
             jalali_expire_date = jd.fromgregorian(

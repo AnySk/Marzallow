@@ -1,3 +1,4 @@
+import time
 """
 Functions for managing proxy hosts, users, user templates, nodes, and administrative tasks.
 """
@@ -220,6 +221,9 @@ UsersSortingOptions = Enum('UsersSortingOptions', {
     '-data_limit': User.data_limit.desc(),
     '-expire': User.expire.desc(),
     '-created_at': User.created_at.desc(),
+    # never-online users last in both directions (portable: MySQL has no NULLS LAST)
+    'online_at': (User.online_at.is_(None), User.online_at.asc()),
+    '-online_at': (User.online_at.is_(None), User.online_at.desc()),
 })
 
 
@@ -233,6 +237,9 @@ def get_users(db: Session,
               admin: Optional[Admin] = None,
               admins: Optional[List[str]] = None,
               reset_strategy: Optional[Union[UserDataLimitResetStrategy, list]] = None,
+              expire_before: Optional[int] = None,
+              usage_ratio_above: Optional[float] = None,
+              online_since: Optional[datetime] = None,
               return_with_count: bool = False) -> Union[List[User], Tuple[List[User], int]]:
     """
     Retrieves users based on various filters and options.
@@ -279,11 +286,24 @@ def get_users(db: Session,
     if admins:
         query = query.filter(User.admin.has(Admin.username.in_(admins)))
 
+    if expire_before is not None:  # users with an expiry date up to this UNIX time
+        query = query.filter(User.expire.isnot(None), User.expire > 0, User.expire <= expire_before)
+
+    if usage_ratio_above is not None:  # used at least this share of a data limit
+        query = query.filter(User.data_limit.isnot(None), User.data_limit > 0,
+                             User.used_traffic >= User.data_limit * usage_ratio_above)
+
+    if online_since is not None:
+        query = query.filter(User.online_at >= online_since)
+
     if return_with_count:
         count = query.count()
 
     if sort:
-        query = query.order_by(*(opt.value for opt in sort))
+        clauses = []
+        for opt in sort:
+            clauses.extend(opt.value if isinstance(opt.value, tuple) else (opt.value,))
+        query = query.order_by(*clauses)
 
     if offset:
         query = query.offset(offset)
@@ -493,7 +513,7 @@ def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
     if modify.expire is not None:
         dbuser.expire = (modify.expire or None)
         if dbuser.status in (UserStatus.active, UserStatus.expired):
-            if not dbuser.expire or dbuser.expire > datetime.utcnow().timestamp():
+            if not dbuser.expire or dbuser.expire > time.time():
                 dbuser.status = UserStatus.active
                 for days_left in sorted(NOTIFY_DAYS_LEFT):
                     if not dbuser.expire or (calculate_expiration_days(
@@ -857,7 +877,7 @@ def start_user_expire(db: Session, dbuser: User) -> User:
     Returns:
         User: The updated user object.
     """
-    expire = int(datetime.utcnow().timestamp()) + dbuser.on_hold_expire_duration
+    expire = int(time.time()) + dbuser.on_hold_expire_duration
     dbuser.expire = expire
     dbuser.on_hold_expire_duration = None
     dbuser.on_hold_timeout = None
@@ -1502,3 +1522,26 @@ def count_online_users(db: Session, hours: int = 24):
     query = db.query(func.count(User.id)).filter(User.online_at.isnot(
         None), User.online_at >= twenty_four_hours_ago)
     return query.scalar()
+
+
+def get_user_reset_logs(db: Session, dbuser: User, limit: int = 50) -> List[UserUsageResetLogs]:
+    """A user's usage resets, newest first."""
+    return (db.query(UserUsageResetLogs)
+            .filter(UserUsageResetLogs.user_id == dbuser.id)
+            .order_by(UserUsageResetLogs.reset_at.desc())
+            .limit(limit).all())
+
+
+def get_daily_usage(db: Session, start: datetime, end: datetime,
+                    admins: Optional[List[str]] = None, username: Optional[str] = None) -> List[dict]:
+    """Total user traffic per UTC day (from the hourly per-node records)."""
+    day = func.date(NodeUserUsage.created_at)  # date() exists on SQLite, MySQL and PostgreSQL
+    query = (db.query(day.label("day"), func.sum(NodeUserUsage.used_traffic))
+             .join(User, NodeUserUsage.user_id == User.id)
+             .filter(NodeUserUsage.created_at >= start, NodeUserUsage.created_at <= end))
+    if admins:
+        query = query.filter(User.admin.has(Admin.username.in_(admins)))
+    if username:
+        query = query.filter(User.username == username)
+    rows = query.group_by(day).order_by(day).all()
+    return [{"date": str(d)[:10], "used_traffic": int(total or 0)} for d, total in rows]
