@@ -126,16 +126,72 @@ The ones you'll most likely need:
 
 ## Coming from Marzban
 
-Stop Marzban, back up `/var/lib/marzban` and `.env`, switch the image to `ghcr.io/anysk/marzallow:latest` (or
-check out this repository), and start it. Migrations run automatically in Docker; from source run
-`uv run alembic upgrade head`. Then note:
+Marzallow runs on Marzban's database, `.env` and data directory as they are, so switching takes a few minutes.
+It works from Marzban 0.8.x (`gozargah/marzban:latest` or a version tag). The `:dev` image is Marzban's 1.0
+beta, which has a different database, and can't be switched.
+
+### Panel (Docker, as installed by `marzban.sh`)
+
+```bash
+cd /opt/marzban
+docker compose images            # check the image isn't gozargah/marzban:dev
+docker compose down
+
+# back up the data directory (it holds the MySQL/MariaDB files too, if you use them), .env and the compose file
+cp -a /var/lib/marzban /var/lib/marzban.bak
+cp .env docker-compose.yml /var/lib/marzban.bak/
+
+sed -i 's#image: gozargah/marzban:.*#image: ghcr.io/anysk/marzallow:latest#' docker-compose.yml
+docker compose pull && docker compose up -d
+docker compose logs -f marzban   # the database is upgraded on start; Ctrl+C once the panel is up
+```
+
+Keep the service name `marzban` and the `marzban` script keeps working (`marzban up`, `down`, `logs`, `cli`,
+`backup`, and `update`, which now pulls Marzallow). Don't use `marzban core-update`: the image ships a
+checksum-verified Xray. If `.env` has `XRAY_EXECUTABLE_PATH=/var/lib/marzban/xray-core/xray` from an earlier
+core update, remove that line.
+
+### Panel (from source)
+
+```bash
+cd /opt/marzban          # your Marzban checkout; stop the service and back up as above first
+git remote set-url origin https://github.com/AnySk/Marzallow.git
+git fetch origin && git reset --hard origin/master
+uv sync --frozen --no-dev
+(cd app/dashboard && npm ci) && ./build_dashboard.sh
+uv run alembic upgrade head
+```
+
+Then start the service again.
+
+### Nodes
+
+Existing Marzban-node servers keep working with the Marzallow panel, so this can wait. To switch one, edit its
+`docker-compose.yml`:
+
+```yaml
+    image: ghcr.io/anysk/marzallow:latest
+    command: node
+```
+
+and run `docker compose pull && docker compose up -d`. The settings, data directory and certificates stay
+the same, so the panel reconnects without re-adding the node.
+
+### After switching
 
 - The `.env` sudo admin has to log in again: their tokens are now invalidated when `SUDO_PASSWORD` changes.
 - Each user keeps one stable subscription link until it's revoked. Old links keep working.
 - `next_plan.add_remaining_traffic` was inverted upstream; `true` now really adds the remaining traffic.
 - Xray 26.2+ clients reject "Allow insecure". Use a host's pinned certificate SHA-256 instead.
+- The dashboard is English only; admins who picked another language see English.
 - `marzban-cli` and `MARZBAN_ADMIN_PASSWORD` still work as aliases for `marzallow-cli` and
   `MARZALLOW_ADMIN_PASSWORD`.
+
+### Going back
+
+Marzallow adds tables and columns Marzban doesn't know, so switching the image back isn't enough. Stop the
+panel, restore `/var/lib/marzban.bak` (and the `.env` and `docker-compose.yml` in it), then start Marzban.
+Changes made since the switch (new users, traffic counts) are lost.
 
 ## Integrations
 
@@ -209,8 +265,10 @@ npm run build             # type-check and build
 - Xray gRPC bindings: `uv run python xray_api/proto/compile.py`.
 - New Xray version: update `XRAY_VERSION` and the two `XRAY_SHA256_*` values in the `Dockerfile`, and
   regenerate `app/dashboard/src/components/CoreConfigEditor/xray-schema.json` for the config editor.
-- Releases: pushing a tag `vX.Y.Z` publishes `ghcr.io/anysk/marzallow:X.Y.Z`, `:X.Y` and `:latest`; pushes to
-  `dev` publish `:dev`.
+- Releases: bump `version` in `pyproject.toml` and `__version__` in `app/__init__.py`, run `uv lock`, commit
+  and push, then push a tag `vX.Y.Z` (or publish a GitHub release with that tag). The "Release image" workflow
+  runs the tests and publishes `ghcr.io/anysk/marzallow:X.Y.Z`, `:X.Y` and `:latest` for amd64 and arm64.
+  Pushes to a `dev` branch publish `:dev` for testing.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request.
 
