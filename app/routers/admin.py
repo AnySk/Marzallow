@@ -23,8 +23,9 @@ def get_client_ip(request: Request) -> str:
     """The client's IP address.
 
     Uvicorn already resolves X-Forwarded-For, but only for proxies listed in
-    FORWARDED_ALLOW_IPS (default 127.0.0.1). Reading the header here directly
-    would let any client spoof its IP.
+    FORWARDED_ALLOW_IPS (default 127.0.0.1; any proxy when listening on a UNIX
+    socket, see main.py). Reading the header here directly would let any
+    client spoof its IP.
     """
     if request.client:
         return request.client.host
@@ -39,8 +40,12 @@ def admin_token(
 ):
     """Authenticate an admin and issue a token."""
     client_ip = get_client_ip(request)
+    # Keyed by IP *and* username so one client can't lock out every account.
+    # Without a known client IP all requests would share one key (and anyone
+    # could lock the admin out), so limiting is skipped then.
+    limiter_key = f"{client_ip}|{form_data.username.lower()}" if client_ip != "Unknown" else None
 
-    retry_after = login_limiter.retry_after(client_ip)
+    retry_after = login_limiter.retry_after(limiter_key) if limiter_key else 0
     if retry_after:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -50,7 +55,7 @@ def admin_token(
 
     dbadmin = validate_admin(db, form_data.username, form_data.password)
     if not dbadmin:
-        failures = login_limiter.record_failure(client_ip)
+        failures = login_limiter.record_failure(limiter_key) if limiter_key else 0
         # Notify on the first failure from an IP and when it gets locked out,
         # not on every attempt (brute-force bots otherwise flood the channel).
         # Never forward the attempted password.
@@ -62,7 +67,8 @@ def admin_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    login_limiter.reset(client_ip)
+    if limiter_key:
+        login_limiter.reset(limiter_key)
     if client_ip not in LOGIN_NOTIFY_WHITE_LIST:
         report.login(form_data.username, "🔒", client_ip, True)
 

@@ -28,12 +28,13 @@ from config import (
 
 
 def status_change(
-        username: str, status: UserStatus, user: UserResponse, user_admin: Admin = None, by: Admin = None) -> None:
+        username: str, status: UserStatus, user: UserResponse, user_admin: Admin = None, by: Admin = None, *, include_telegram: bool = True) -> None:
     if NOTIFY_STATUS_CHANGE:
-        try:
-            telegram.report_status_change(username, status, user_admin)
-        except Exception:
-            pass
+        if include_telegram:  # the bot posts its own log-channel messages
+            try:
+                telegram.report_status_change(username, status, user_admin)
+            except Exception:
+                pass
         if status == UserStatus.limited:
             notify(UserLimited(username=username, action=Notification.Type.user_limited, user=user))
         elif status == UserStatus.expired:
@@ -48,22 +49,23 @@ def status_change(
             pass
 
 
-def user_created(user: UserResponse, user_id: int, by: Admin, user_admin: Admin = None) -> None:
+def user_created(user: UserResponse, user_id: int, by: Admin, user_admin: Admin = None, *, include_telegram: bool = True) -> None:
     if NOTIFY_USER_CREATED:
-        try:
-            telegram.report_new_user(
-                user_id=user_id,
-                username=user.username,
-                by=by.username,
-                expire_date=user.expire,
-                data_limit=user.data_limit,
-                proxies=user.proxies,
-                has_next_plan=user.next_plan is not None,
-                data_limit_reset_strategy=user.data_limit_reset_strategy,
-                admin=user_admin
-            )
-        except Exception:
-            pass
+        if include_telegram:  # the bot posts its own log-channel messages
+            try:
+                telegram.report_new_user(
+                    user_id=user_id,
+                    username=user.username,
+                    by=by.username,
+                    expire_date=user.expire,
+                    data_limit=user.data_limit,
+                    proxies=user.proxies,
+                    has_next_plan=user.next_plan is not None,
+                    data_limit_reset_strategy=user.data_limit_reset_strategy,
+                    admin=user_admin
+                )
+            except Exception:
+                pass
         notify(UserCreated(username=user.username, action=Notification.Type.user_created, by=by, user=user))
         try:
             discord.report_new_user(
@@ -80,21 +82,22 @@ def user_created(user: UserResponse, user_id: int, by: Admin, user_admin: Admin 
             pass
 
 
-def user_updated(user: UserResponse, by: Admin, user_admin: Admin = None) -> None:
+def user_updated(user: UserResponse, by: Admin, user_admin: Admin = None, *, include_telegram: bool = True) -> None:
     if NOTIFY_USER_UPDATED:
-        try:
-            telegram.report_user_modification(
-                username=user.username,
-                expire_date=user.expire,
-                data_limit=user.data_limit,
-                proxies=user.proxies,
-                by=by.username,
-                has_next_plan=user.next_plan is not None,
-                data_limit_reset_strategy=user.data_limit_reset_strategy,
-                admin=user_admin
-            )
-        except Exception:
-            pass
+        if include_telegram:  # the bot posts its own log-channel messages
+            try:
+                telegram.report_user_modification(
+                    username=user.username,
+                    expire_date=user.expire,
+                    data_limit=user.data_limit,
+                    proxies=user.proxies,
+                    by=by.username,
+                    has_next_plan=user.next_plan is not None,
+                    data_limit_reset_strategy=user.data_limit_reset_strategy,
+                    admin=user_admin
+                )
+            except Exception:
+                pass
         notify(UserUpdated(username=user.username, action=Notification.Type.user_updated, by=by, user=user))
         try:
             discord.report_user_modification(
@@ -111,12 +114,13 @@ def user_updated(user: UserResponse, by: Admin, user_admin: Admin = None) -> Non
             pass
 
 
-def user_deleted(username: str, by: Admin, user_admin: Admin = None) -> None:
+def user_deleted(username: str, by: Admin, user_admin: Admin = None, *, include_telegram: bool = True) -> None:
     if NOTIFY_USER_DELETED:
-        try:
-            telegram.report_user_deletion(username=username, by=by.username, admin=user_admin)
-        except Exception:
-            pass
+        if include_telegram:  # the bot posts its own log-channel messages
+            try:
+                telegram.report_user_deletion(username=username, by=by.username, admin=user_admin)
+            except Exception:
+                pass
         notify(UserDeleted(username=username, action=Notification.Type.user_deleted, by=by))
         try:
             discord.report_user_deletion(username=username, by=by.username, admin=user_admin)
@@ -124,16 +128,17 @@ def user_deleted(username: str, by: Admin, user_admin: Admin = None) -> None:
             pass
 
 
-def user_data_usage_reset(user: UserResponse, by: Admin, user_admin: Admin = None) -> None:
+def user_data_usage_reset(user: UserResponse, by: Admin, user_admin: Admin = None, *, include_telegram: bool = True) -> None:
     if NOTIFY_USER_DATA_USED_RESET:
-        try:
-            telegram.report_user_usage_reset(
-                username=user.username,
-                by=by.username,
-                admin=user_admin
-            )
-        except Exception:
-            pass
+        if include_telegram:  # the bot posts its own log-channel messages
+            try:
+                telegram.report_user_usage_reset(
+                    username=user.username,
+                    by=by.username,
+                    admin=user_admin
+                )
+            except Exception:
+                pass
         notify(UserDataUsageReset(username=user.username, action=Notification.Type.data_usage_reset, by=by, user=user))
         try:
             discord.report_user_usage_reset(
@@ -164,16 +169,17 @@ def user_data_reset_by_next(user: UserResponse, user_admin: Admin = None) -> Non
             pass
 
 
-def user_subscription_revoked(user: UserResponse, by: Admin, user_admin: Admin = None) -> None:
+def user_subscription_revoked(user: UserResponse, by: Admin, user_admin: Admin = None, *, include_telegram: bool = True) -> None:
     if NOTIFY_USER_SUB_REVOKED:
-        try:
-            telegram.report_user_subscription_revoked(
-                username=user.username,
-                by=by.username,
-                admin=user_admin
-            )
-        except Exception:
-            pass
+        if include_telegram:  # the bot posts its own log-channel messages
+            try:
+                telegram.report_user_subscription_revoked(
+                    username=user.username,
+                    by=by.username,
+                    admin=user_admin
+                )
+            except Exception:
+                pass
         notify(UserSubscriptionRevoked(username=user.username,
                action=Notification.Type.subscription_revoked, by=by, user=user))
         try:

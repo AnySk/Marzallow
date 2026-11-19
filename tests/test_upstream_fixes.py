@@ -94,7 +94,19 @@ def test_spoofed_forwarded_for_is_ignored(client, monkeypatch):
     for i in range(2):  # rotating X-Forwarded-For must not evade the limit
         client.post("/api/admin/token", data={"username": "x", "password": "y"},
                     headers={"X-Forwarded-For": f"10.0.0.{i}"})
-    assert limiter.retry_after("testclient") > 0
+    assert limiter.retry_after("testclient|x") > 0
+
+
+def test_lockout_is_per_username(client, monkeypatch):
+    from app.routers import admin as admin_router
+    from app.utils.ratelimit import LoginRateLimiter
+
+    monkeypatch.setattr(admin_router, "login_limiter", LoginRateLimiter(2, 60))
+    for _ in range(2):
+        client.post("/api/admin/token", data={"username": "attacker-target", "password": "nope"})
+    assert client.post("/api/admin/token", data={"username": "attacker-target", "password": "x"}).status_code == 429
+    # other accounts from the same client are unaffected
+    assert client.post("/api/admin/token", data={"username": "sudo", "password": "sudopass"}).status_code == 200
 
 
 # --- #2083 / #2066: subscription link changes on every refresh -------------

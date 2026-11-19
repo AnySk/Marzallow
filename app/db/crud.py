@@ -641,7 +641,7 @@ def update_user_sub(db: Session, dbuser: User, user_agent: str) -> User:
         User: The updated user object.
     """
     dbuser.sub_updated_at = datetime.utcnow()
-    dbuser.sub_last_user_agent = user_agent
+    dbuser.sub_last_user_agent = user_agent[:512]  # column limit
 
     db.commit()
     db.refresh(dbuser)

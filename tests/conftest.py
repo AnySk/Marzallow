@@ -19,7 +19,9 @@ _tmp = tempfile.mkdtemp(prefix="marzban-tests-")
 shutil.copy(FIXTURES / "xray_config.json", f"{_tmp}/xray_config.json")
 
 os.environ.update({
-    "SQLALCHEMY_DATABASE_URL": f"sqlite:///{_tmp}/db.sqlite3",
+    # TEST_DATABASE_URL runs the suite against MySQL/MariaDB/PostgreSQL instead
+    # (it must point at an empty database).
+    "SQLALCHEMY_DATABASE_URL": os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{_tmp}/db.sqlite3",
     "XRAY_EXECUTABLE_PATH": str(FIXTURES / "xray"),
     "XRAY_ASSETS_PATH": str(FIXTURES),
     "XRAY_JSON": f"{_tmp}/xray_config.json",

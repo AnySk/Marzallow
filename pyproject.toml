@@ -21,6 +21,8 @@ dependencies = [
     "Jinja2>=3.1.6",
     "protobuf>=7.36.2",
     "psutil>=7.2.2",
+    # PostgreSQL (postgresql:// URLs)
+    "psycopg[binary]>=3.3.9",  # PostgreSQL (postgresql:// URLs)
     "pydantic>=2.14.3",
     "PyJWT>=2.15.1",
     "PyMySQL>=1.2.4",

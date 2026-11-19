@@ -64,7 +64,7 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String(34, collation='NOCASE'), unique=True, index=True)
     proxies = relationship("Proxy", back_populates="user", cascade="all, delete-orphan")
-    status = Column(Enum(UserStatus), nullable=False, default=UserStatus.active)
+    status = Column(Enum(UserStatus), nullable=False, default=UserStatus.active, index=True)
     used_traffic = Column(BigInteger, default=0)
     node_usages = relationship("NodeUserUsage", back_populates="user", cascade="all, delete-orphan")
     notification_reminders = relationship("NotificationReminder", back_populates="user", cascade="all, delete-orphan")
@@ -75,8 +75,8 @@ class User(Base):
         default=UserDataLimitResetStrategy.no_reset,
     )
     usage_logs = relationship("UserUsageResetLogs", back_populates="user")  # maybe rename it to reset_usage_logs?
-    expire = Column(Integer, nullable=True)
-    admin_id = Column(Integer, ForeignKey("admins.id"))
+    expire = Column(BigInteger, nullable=True, index=True)  # UNIX time; 64-bit for dates after 2038
+    admin_id = Column(Integer, ForeignKey("admins.id"), index=True)
     admin = relationship("Admin", back_populates="users")
     sub_revoked_at = Column(DateTime, nullable=True, default=None)
     sub_updated_at = Column(DateTime, nullable=True, default=None)
@@ -166,7 +166,7 @@ class NextPlan(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     data_limit = Column(BigInteger, nullable=False)
-    expire = Column(Integer, nullable=True)
+    expire = Column(BigInteger, nullable=True)  # UNIX time, copied to users.expire
     add_remaining_traffic = Column(Boolean, nullable=False, default=False, server_default='0')
     fire_on_either = Column(Boolean, nullable=False, default=True, server_default='0')
 
@@ -319,7 +319,7 @@ class NodeUserUsage(Base):
 
     id = Column(Integer, primary_key=True)
     created_at = Column(DateTime, unique=False, nullable=False)  # one hour per record
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     user = relationship("User", back_populates="node_usages")
     node_id = Column(Integer, ForeignKey("nodes.id"))
     node = relationship("Node", back_populates="user_usages")
@@ -344,7 +344,7 @@ class NotificationReminder(Base):
     __tablename__ = "notification_reminders"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     user = relationship("User", back_populates="notification_reminders")
     type = Column(Enum(ReminderType), nullable=False)
     threshold = Column(Integer, nullable=True)

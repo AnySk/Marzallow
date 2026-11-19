@@ -10,6 +10,12 @@ from app.utils.jwt import get_admin_payload, sudoer_password_fingerprint
 from app.utils.password import hash_password, verify_password
 from config import SUDOERS
 
+# The trailing path also stops look-alike hosts such as "discord.com.example.org".
+DISCORD_WEBHOOK_PREFIXES = (
+    "https://discord.com/api/webhooks/",
+    "https://ptb.discord.com/api/webhooks/",
+    "https://canary.discord.com/api/webhooks/",
+)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/admin/token")  # Admin view url
 
 
@@ -107,8 +113,8 @@ class AdminCreate(Admin):
     @field_validator("discord_webhook")
     @classmethod
     def validate_discord_webhook(cls, value):
-        if value and not value.startswith("https://discord.com"):
-            raise ValueError("Discord webhook must start with 'https://discord.com'")
+        if value and not value.startswith(DISCORD_WEBHOOK_PREFIXES):
+            raise ValueError("Discord webhook must be a discord.com (or ptb/canary) webhook URL")
         return value
 
 
@@ -126,8 +132,8 @@ class AdminModify(BaseModel):
     @field_validator("discord_webhook")
     @classmethod
     def validate_discord_webhook(cls, value):
-        if value and not value.startswith("https://discord.com"):
-            raise ValueError("Discord webhook must start with 'https://discord.com'")
+        if value and not value.startswith(DISCORD_WEBHOOK_PREFIXES):
+            raise ValueError("Discord webhook must be a discord.com (or ptb/canary) webhook URL")
         return value
 
 

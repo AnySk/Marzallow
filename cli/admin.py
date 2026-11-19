@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db import GetDB, crud
 from app.db.models import Admin, User
-from app.models.admin import AdminCreate, AdminPartialModify
+from app.models.admin import DISCORD_WEBHOOK_PREFIXES, AdminCreate, AdminPartialModify
 from app.utils.system import readable_size
 
 from . import utils
@@ -31,8 +31,8 @@ def validate_telegram_id(value: Union[int, str]) -> Union[int, None]:
 def validate_discord_webhook(value: str) -> Union[str, None]:
     if not value or value == "0":
         return ""
-    if not value.startswith("https://discord.com/api/webhooks/"):
-        utils.error("Discord webhook must start with 'https://discord.com/api/webhooks/'")
+    if not value.startswith(DISCORD_WEBHOOK_PREFIXES):
+        utils.error("Discord webhook must be a discord.com (or ptb/canary) webhook URL")
     return value
 
 
