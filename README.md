@@ -14,13 +14,27 @@ This is a personal fork of [Marzban](https://github.com/Gozargah/Marzban) by Goz
   release verified against its SHA-256 checksum, instead of running a remote install script.
 - **Test suite.** `pytest` runs the real app against a stub Xray binary and a migrated database.
 - **English only.** Other UI languages were removed.
-- **Safer defaults.** CORS is same-origin unless `ALLOWED_ORIGINS` is set, and credentials are never allowed
-  cross-origin.
-- **Fixes**, including:
-  - API-created users without an explicit `inbounds` field got an empty subscription.
-  - Deleting a user owned by the `.env` sudo admin returned a 500 error.
-- **Lighter dashboard.** The login page loads about half the JavaScript it used to; the JSON editor and charts
-  load on demand.
+- **Works with current Xray.** REALITY public keys are derived in Python (the `xray x25519` output format
+  changed several times and broke config loading), Xray 26's `password` key name is accepted, and hosts can
+  pin a certificate (`pcs`/`vcn`) now that Xray has removed `allowInsecure`.
+- **PostgreSQL support**, and the migrations and the test suite run on SQLite, MySQL/MariaDB and PostgreSQL.
+- **Security hardening.** Brute-force protection for admin logins, revocable tokens for the `.env` sudo
+  admin, no passwords in login notifications, same-origin CORS by default, no spoofable client IPs.
+- **Many upstream bugs fixed**, most reported in upstream's issue tracker, for example:
+  - subscription links changed on every page refresh;
+  - the REALITY short ID was missing from the first link after a restart;
+  - users created through the API without `inbounds` got an empty subscription;
+  - on MySQL, browsers couldn't open the subscription page (user agent column too short), expiry dates after
+    2038 and templates over 2 GB couldn't be saved;
+  - limited users weren't re-added to Xray after a periodic usage reset, and an unreachable node could leave
+    expired users connected;
+  - traffic counted while the database was unavailable was lost;
+  - resetting a disabled user's usage re-enabled them; `active-next` always failed;
+  - Xray could hang once its error output filled an unread pipe;
+  - IPv6 hosts broke Clash/sing-box configs.
+- **Dashboard.** User notes shown in the users table, no external font requests, works under any
+  `DASHBOARD_PATH` without exposing assets at the site root, and the login page loads about half the
+  JavaScript it used to.
 
 ## Features
 
@@ -128,7 +142,7 @@ Settings come from environment variables or a `.env` file in the working directo
 | --- | --- |
 | SUDO_USERNAME | Superuser username (prefer creating admins with `marzban-cli admin create`) |
 | SUDO_PASSWORD | Superuser password |
-| SQLALCHEMY_DATABASE_URL | Database URL ([SQLAlchemy docs](https://docs.sqlalchemy.org/en/20/core/engines.html#database-urls)); SQLite, MySQL and MariaDB are supported |
+| SQLALCHEMY_DATABASE_URL | Database URL ([SQLAlchemy docs](https://docs.sqlalchemy.org/en/20/core/engines.html#database-urls)); SQLite, MySQL/MariaDB (`mysql+pymysql://…`) and PostgreSQL (`postgresql://…`) are supported |
 | UVICORN_HOST | Bind host (default: `0.0.0.0`; only used with TLS) |
 | UVICORN_PORT | Bind port (default: `8000`) |
 | UVICORN_UDS | Bind to a UNIX domain socket instead |
@@ -136,10 +150,15 @@ Settings come from environment variables or a `.env` file in the working directo
 | UVICORN_SSL_KEYFILE | TLS key file |
 | UVICORN_SSL_CA_TYPE | `public` (default) or `private` for a self-signed CA (testing only) |
 | ALLOWED_ORIGINS | Comma-separated browser origins allowed to call the API; empty (default) means same-origin only |
+| LOGIN_MAX_FAILED_ATTEMPTS | Failed admin logins per client IP and account before a lockout; `0` disables (default: `5`) |
+| LOGIN_LOCKOUT_SECONDS | Lockout window in seconds (default: `900`) |
+| FORWARDED_ALLOW_IPS | Reverse proxies (IPs/networks) whose `X-Forwarded-For` is trusted for the client IP (default: `127.0.0.1`) |
+| UVICORN_UDS_TRUST_FORWARDED_FOR | With `UVICORN_UDS`: take the client IP from the last `X-Forwarded-For` entry. Only enable if the proxy appends it (nginx: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`) |
 | DASHBOARD_PATH | Dashboard URL path (default: `/dashboard/`) |
 | XRAY_JSON | Path to the Xray JSON config (default: `./xray_config.json`) |
 | XRAY_EXECUTABLE_PATH | Path to the Xray binary (default: `/usr/local/bin/xray`) |
 | XRAY_ASSETS_PATH | Path to Xray assets (default: `/usr/local/share/xray`) |
+| XRAY_API_PORT | Port of Xray's gRPC API on 127.0.0.1 (default: a random free port) |
 | XRAY_SUBSCRIPTION_URL_PREFIX | Prefix for subscription URLs, e.g. `https://sub.example.com` |
 | XRAY_SUBSCRIPTION_PATH | Subscription URL path (default: `sub`) |
 | XRAY_FALLBACKS_INBOUND_TAG | Tag of the inbound that holds fallbacks, if you use them |
@@ -168,9 +187,24 @@ Settings come from environment variables or a `.env` file in the working directo
 | NOTIFY_REACHED_USAGE_PERCENT | Usage percentage that triggers a warning (default: `80`) |
 | NOTIFY_DAYS_LEFT | Days before expiry that trigger a warning (default: `3`) |
 | USERS_AUTODELETE_DAYS | Delete expired users after this many days; negative disables (default: `-1`) |
-| USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS | Also auto-delete limited users (default: `False`) |
+| USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS | Also auto-delete limited users, with or without an expiry date, `USERS_AUTODELETE_DAYS` after they became limited (default: `False`) |
 
 See `.env.example` for the full list, including the Discord webhook settings.
+
+## Upgrading from upstream Marzban
+
+Run the migrations as usual (`alembic upgrade head`; the Docker image does it on start). Then note:
+
+- **Admins of the `.env` sudo user must log in again**: their tokens now become invalid when `SUDO_PASSWORD`
+  changes, and older tokens lack that check.
+- **Subscription links are now stable.** The panel shows each user one link until their subscription is
+  revoked. Links handed out before the upgrade keep working.
+- **`next_plan.add_remaining_traffic` now does what its name says** (it was inverted): `true` adds the
+  remaining traffic to the new plan's limit.
+- **Hosts with "Allow Insecure"**: Xray 26.2+ clients reject that option. Use the host's "Pinned certificate
+  SHA-256" instead.
+- **Reverse proxies**: see `LOGIN_MAX_FAILED_ATTEMPTS` and `FORWARDED_ALLOW_IPS` /
+  `UVICORN_UDS_TRUST_FORWARDED_FOR` so login lockouts use the real client IP.
 
 ## API
 
