@@ -4,7 +4,7 @@ version = "0.8.4"
 description = "Marzallow: proxy management panel for Xray-core (fork of Gozargah/Marzban)"
 readme = "README.md"
 license = "AGPL-3.0-only"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 # Direct runtime dependencies only. Exact versions (with hashes) live in uv.lock.
 dependencies = [
     "alembic>=1.20.1",
