@@ -35,7 +35,7 @@
   "header.nodesUsage": "Nodes Usage",
   "hostsDialog.addHost": "Add host",
   "hostsDialog.advancedOptions": "Advanced options",
-  "hostsDialog.allowinsecure": "Allow Insecure",
+  "hostsDialog.allowinsecure": "Allow Insecure (deprecated: not supported by Xray 26.2+)",
   "hostsDialog.useSniAsHost": "Use SNI as host",
   "hostsDialog.alpn": "ALPN",
   "hostsDialog.apply": "Apply",
@@ -187,5 +187,9 @@
   "usersTable.noUser": "No users have been added yet",
   "usersTable.noUserMatched": "No users match your search",
   "usersTable.status": "status",
-  "usersTable.total": "Total"
+  "usersTable.total": "Total",
+  "hostsDialog.pinnedPeerCert": "Pinned certificate SHA-256",
+  "hostsDialog.pinnedPeerCert.info": "SHA-256 hash of the server certificate (several separated by commas). Clients accept that certificate even if it is self-signed. This replaces Allow Insecure, which newer Xray cores no longer support. Get it with: openssl x509 -noout -fingerprint -sha256 -in cert.pem",
+  "hostsDialog.verifyPeerCertByName": "Verify certificate by name",
+  "hostsDialog.verifyPeerCertByName.info": "Name(s) to verify the server certificate against instead of the SNI, separated by commas (e.g. for domain fronting)."
 }

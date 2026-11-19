@@ -8,7 +8,7 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 
 from app import app, logger
-from config import (DEBUG, UVICORN_HOST, UVICORN_PORT, UVICORN_SSL_CERTFILE,
+from config import (DEBUG, UVICORN_UDS_TRUST_FORWARDED_FOR, UVICORN_HOST, UVICORN_PORT, UVICORN_SSL_CERTFILE,
                     UVICORN_SSL_KEYFILE, UVICORN_SSL_CA_TYPE, UVICORN_UDS)
 
 
@@ -94,6 +94,13 @@ Then, navigate to {click.style(f'http://127.0.0.1:{UVICORN_PORT}', bold=True)} o
         bind_args['uds'] = None
         bind_args['host'] = '127.0.0.1'
         bind_args['port'] = UVICORN_PORT
+
+    if bind_args.get('uds') and not UVICORN_UDS_TRUST_FORWARDED_FOR:
+        logger.warning(
+            "Listening on a UNIX socket without UVICORN_UDS_TRUST_FORWARDED_FOR: client IPs are unknown, "
+            "so login lockouts apply per account only. Configure your proxy to append X-Forwarded-For "
+            "and set UVICORN_UDS_TRUST_FORWARDED_FOR=true (see .env.example)."
+        )
 
     try:
         uvicorn.run(

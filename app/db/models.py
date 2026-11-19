@@ -264,6 +264,10 @@ class ProxyHost(Base):
     noise_setting = Column(String(2000), nullable=True)
     random_user_agent = Column(Boolean, nullable=False, default=False, server_default='0')
     use_sni_as_host = Column(Boolean, nullable=False, default=False, server_default="0")
+    # TLS certificate pinning / verification name; replaces allowInsecure, which
+    # xray-core removed (share-link params pcs / vcn)
+    pinned_peer_cert_sha256 = Column(String(1024), nullable=True)
+    verify_peer_cert_by_name = Column(String(512), nullable=True)
 
 
 class System(Base):

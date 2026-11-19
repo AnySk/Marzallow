@@ -343,3 +343,47 @@ def test_retryable_db_errors():
     assert job._is_retryable(OperationalError("x", {}, MySQLErr(1213, "Deadlock found")))
     assert job._is_retryable(OperationalError("x", {}, Exception("database is locked")))
     assert not job._is_retryable(OperationalError("x", {}, MySQLErr(1045, "Access denied")))
+
+
+# --- #2060: certificate pinning instead of allowInsecure ---------------------
+
+CERT_HASH = "6F:3C" + ":AB" * 30  # openssl's colon form (32 bytes)
+
+
+def test_host_certificate_pinning(client, auth, make_user):
+    from app import xray
+
+    hosts = client.get("/api/hosts", headers=auth).json()
+    original = hosts["TROJAN GRPC"]
+    hosts["TROJAN GRPC"] = [{**original[0], "security": "tls", "sni": "pin.example",
+                             "pinned_peer_cert_sha256": CERT_HASH,
+                             "verify_peer_cert_by_name": " a.example , b.example "}]
+    r = client.put("/api/hosts", headers=auth, json=hosts)
+    assert r.status_code == 200, r.text
+    stored = r.json()["TROJAN GRPC"][0]
+    expected_hash = CERT_HASH.replace(":", "").lower()
+    assert stored["pinned_peer_cert_sha256"] == expected_hash
+    assert stored["verify_peer_cert_by_name"] == "a.example,b.example"
+    try:
+        user = make_user("pin_user", proxies={"trojan": {}})
+        link = next(l for l in _links(client, user["subscription_url"]) if l.startswith("trojan://"))
+        query = parse_qs(urlparse(link).query)
+        assert query["pcs"] == [expected_hash]
+        assert query["vcn"] == ["a.example,b.example"]
+        assert "allowInsecure" not in link
+
+        config = json.loads(client.get(_sub_path(user["subscription_url"]) + "/v2ray-json").text)
+        outbound = config[0]["outbounds"][0] if isinstance(config, list) else config["outbounds"][0]
+        tls = outbound["streamSettings"]["tlsSettings"]
+        assert tls["pinnedPeerCertSha256"] == expected_hash
+        assert tls["verifyPeerCertByName"] == "a.example,b.example"
+        assert "allowInsecure" not in tls  # newer cores reject the key entirely
+    finally:
+        hosts["TROJAN GRPC"] = original
+        client.put("/api/hosts", headers=auth, json=hosts)
+
+
+def test_invalid_pinned_hash_rejected(client, auth):
+    hosts = client.get("/api/hosts", headers=auth).json()
+    hosts["TROJAN GRPC"] = [{**hosts["TROJAN GRPC"][0], "pinned_peer_cert_sha256": "not-a-hash"}]
+    assert client.put("/api/hosts", headers=auth, json=hosts).status_code == 422

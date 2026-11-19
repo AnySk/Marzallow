@@ -146,6 +146,8 @@ const hostsSchema = z.record(
       host: z.string().nullable(),
       mux_enable: z.boolean().default(false),
       allowinsecure: z.boolean().nullable().default(false),
+      pinned_peer_cert_sha256: z.string().nullable().optional(),
+      verify_peer_cert_by_name: z.string().nullable().optional(),
       is_disabled: z.boolean().default(true),
       fragment_setting: z.string().nullable(),
       noise_setting: z.string().nullable(),
@@ -207,6 +209,8 @@ const AccordionInbound: FC<AccordionInboundType> = ({
       remark: "",
       mux_enable: false,
       allowinsecure: false,
+      pinned_peer_cert_sha256: "",
+      verify_peer_cert_by_name: "",
       is_disabled: false,
       fragment_setting: "",
       noise_setting: "",
@@ -1096,6 +1100,100 @@ const AccordionInbound: FC<AccordionInboundType> = ({
                                 </Error>
                               )}
                         </FormControl>
+                          <FormControl
+                            isInvalid={
+                              !!(
+                                accordionErrors &&
+                                accordionErrors[index]?.pinned_peer_cert_sha256
+                              )
+                            }
+                          >
+                            <FormLabel
+                              display="flex"
+                              pb={1}
+                              alignItems="center"
+                              gap={1}
+                              justifyContent="space-between"
+                              m="0"
+                            >
+                              <span>{t("hostsDialog.pinnedPeerCert")}</span>
+                              <Popover isLazy placement="right">
+                                <PopoverTrigger>
+                                  <InfoIcon />
+                                </PopoverTrigger>
+                                <Portal>
+                                  <PopoverContent p={2}>
+                                    <PopoverArrow />
+                                    <PopoverCloseButton />
+                                    <Text fontSize="xs" pr={5}>
+                                      {t("hostsDialog.pinnedPeerCert.info")}
+                                    </Text>
+                                  </PopoverContent>
+                                </Portal>
+                              </Popover>
+                            </FormLabel>
+                            <Input
+                              size="sm"
+                              borderRadius="4px"
+                              placeholder="e.g. 6f3c…a91d (SHA-256 hex)"
+                              {...form.register(
+                                hostKey + "." + index + ".pinned_peer_cert_sha256"
+                              )}
+                            />
+                            {accordionErrors &&
+                              accordionErrors[index]?.pinned_peer_cert_sha256 && (
+                                <Error>
+                                  {accordionErrors[index]?.pinned_peer_cert_sha256?.message}
+                                </Error>
+                              )}
+                          </FormControl>
+                          <FormControl
+                            isInvalid={
+                              !!(
+                                accordionErrors &&
+                                accordionErrors[index]?.verify_peer_cert_by_name
+                              )
+                            }
+                          >
+                            <FormLabel
+                              display="flex"
+                              pb={1}
+                              alignItems="center"
+                              gap={1}
+                              justifyContent="space-between"
+                              m="0"
+                            >
+                              <span>{t("hostsDialog.verifyPeerCertByName")}</span>
+                              <Popover isLazy placement="right">
+                                <PopoverTrigger>
+                                  <InfoIcon />
+                                </PopoverTrigger>
+                                <Portal>
+                                  <PopoverContent p={2}>
+                                    <PopoverArrow />
+                                    <PopoverCloseButton />
+                                    <Text fontSize="xs" pr={5}>
+                                      {t("hostsDialog.verifyPeerCertByName.info")}
+                                    </Text>
+                                  </PopoverContent>
+                                </Portal>
+                              </Popover>
+                            </FormLabel>
+                            <Input
+                              size="sm"
+                              borderRadius="4px"
+                              placeholder="e.g. example.com"
+                              {...form.register(
+                                hostKey + "." + index + ".verify_peer_cert_by_name"
+                              )}
+                            />
+                            {accordionErrors &&
+                              accordionErrors[index]?.verify_peer_cert_by_name && (
+                                <Error>
+                                  {accordionErrors[index]?.verify_peer_cert_by_name?.message}
+                                </Error>
+                              )}
+                          </FormControl>
                          <FormControl
                             isInvalid={
                               !!(
