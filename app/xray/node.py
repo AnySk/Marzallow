@@ -12,7 +12,8 @@ import grpc
 import requests
 import rpyc
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.poolmanager import PoolManager
+from urllib3.poolmanager import PoolManager
+from urllib3.util.ssl_ import create_urllib3_context
 from websocket import WebSocketConnectionClosedException, WebSocketTimeoutException, create_connection
 
 from app.xray.config import XRayConfig
@@ -26,12 +27,27 @@ def string_to_temp_file(content: str):
     return file
 
 
+def _node_ssl_context() -> ssl.SSLContext:
+    """TLS settings for talking to a node, which is verified against its own pinned certificate.
+
+    Marzban-node's certificates are self-signed X.509 v1 (no extensions). urllib3
+    2.x turns on strict X.509 checking, which rejects a v1 certificate as a trust
+    anchor ("invalid CA certificate"), so strict mode is turned off here. The
+    certificate itself is still verified: it must be exactly the pinned one.
+    """
+    context = create_urllib3_context()
+    context.check_hostname = False  # node certificates are issued for "Gozargah", not the address
+    context.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    return context
+
+
 class SANIgnoringAdaptor(HTTPAdapter):
     def init_poolmanager(self, connections, maxsize, block=False):
         self.poolmanager = PoolManager(num_pools=connections,
                                        maxsize=maxsize,
                                        block=block,
-                                       assert_hostname=False)
+                                       assert_hostname=False,
+                                       ssl_context=_node_ssl_context())
 
 
 class NodeAPIError(Exception):
@@ -66,9 +82,8 @@ class ReSTXRayNode:
         self._session_id = None
         self._rest_api_url = f"https://{self.address.strip('/')}:{self.port}"
 
-        self._ssl_context = ssl.create_default_context()
-        self._ssl_context.check_hostname = False
-        self._ssl_context.verify_mode = ssl.CERT_NONE
+        # the logs websocket checks the node's pinned certificate too (loaded once connected)
+        self._ssl_context = _node_ssl_context()
         self._ssl_context.load_cert_chain(certfile=self.session.cert[0], keyfile=self.session.cert[1])
         self._logs_ws_url = f"wss://{self.address.strip('/')}:{self.port}/logs"
         self._logs_queues = []
@@ -232,7 +247,8 @@ class ReSTXRayNode:
             try:
                 websocket_url = f"{self._logs_ws_url}?session_id={self._session_id}&interval=0.7"
                 self._ssl_context.load_verify_locations(self.session.verify)
-                ws = create_connection(websocket_url, sslopt={"context": self._ssl_context}, timeout=2)
+                ws = create_connection(websocket_url, timeout=2,
+                                       sslopt={"context": self._ssl_context, "check_hostname": False})
                 while self._logs_queues:
                     try:
                         logs = ws.recv()
@@ -343,6 +359,9 @@ class RPyCXRayNode:
                                     keyfile=self._keyfile.name,
                                     certfile=self._certfile.name,
                                     ca_certs=self._node_certfile.name,
+                                    # a plain context: rpyc's default one is strict and rejects
+                                    # Marzban-node's v1 certificates (see _node_ssl_context)
+                                    ssl_version=ssl.PROTOCOL_TLS_CLIENT,
                                     keepalive=True)
             try:
                 conn.ping()
