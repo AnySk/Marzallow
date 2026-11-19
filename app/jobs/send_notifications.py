@@ -11,7 +11,7 @@ from app.db import GetDB
 from app.db.models import NotificationReminder
 from app.utils.notification import queue
 from config import JOB_SEND_NOTIFICATIONS_INTERVAL
-from app.settings import settings as runtime_settings
+from app.settings import check_public_url, settings as runtime_settings
 
 session = Session()
 
@@ -44,8 +44,12 @@ def send(data: List[Dict[Any, Any]]) -> bool:
 
 def send_req(w_address: str, data):
     try:
+        if runtime_settings.is_overridden("WEBHOOK_ADDRESS"):
+            # set from the dashboard: re-check at send time (DNS may have changed)
+            check_public_url(w_address)
         logger.debug(f"Sending {len(data)} webhook updates to {w_address}")
-        r = session.post(w_address, json=data, headers=_headers())
+        # no redirects: a public URL must not bounce the request to an internal one
+        r = session.post(w_address, json=data, headers=_headers(), allow_redirects=False, timeout=10)
         if r.ok:
             return True
         logger.error(r)

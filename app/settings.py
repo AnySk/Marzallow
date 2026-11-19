@@ -8,9 +8,11 @@ Infrastructure settings (database, ports, TLS, paths, sudo account, Telegram
 bot credentials) are deliberately not editable here.
 """
 import ipaddress
+import socket
 import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
+from urllib.parse import urlparse
 
 import config
 
@@ -36,10 +38,28 @@ def _range(low=None, high=None):
     return check
 
 
+def check_public_url(url: str) -> None:
+    """Raise ValueError unless `url` is http(s) with a host that resolves only to
+    public addresses. Applied to webhook URLs set from the dashboard (not to
+    .env values, which may legitimately point at a local receiver) so a browser
+    session can't make the server call internal services or cloud metadata."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError(f"{url!r} is not an http(s) URL")
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError):
+        raise ValueError(f"{parsed.hostname!r} cannot be resolved")
+    for info in infos:
+        address = ipaddress.ip_address(info[4][0].split("%")[0])
+        if not address.is_global:
+            raise ValueError(f"{parsed.hostname!r} resolves to a non-public address; set local "
+                             "webhooks with WEBHOOK_ADDRESS in .env instead")
+
+
 def _urls(value):
     for url in value:
-        if not url.startswith(("http://", "https://")):
-            raise ValueError(f"{url!r} is not an http(s) URL")
+        check_public_url(url)
 
 
 def _optional_url(value):

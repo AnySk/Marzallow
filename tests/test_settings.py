@@ -1,9 +1,26 @@
 """Dashboard-editable settings: stored overrides that apply immediately."""
 import base64
+import socket
 
 import pytest
 
 from app.settings import DEFINITIONS, settings
+
+
+FAKE_DNS = {"hooks.example.com": "93.184.215.14", "internal.example.com": "10.0.0.5"}
+
+
+@pytest.fixture(autouse=True)
+def fake_dns(monkeypatch):
+    """Deterministic resolution for webhook URL checks (no network in tests)."""
+    real = socket.getaddrinfo
+
+    def getaddrinfo(host, port, *args, **kwargs):
+        if host in FAKE_DNS:
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (FAKE_DNS[host], port))]
+        return real(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
 
 
 @pytest.fixture(autouse=True)
@@ -121,3 +138,54 @@ def test_login_lockout_threshold_applies_immediately(client, auth):
     finally:
         admin_router.login_limiter.reset("testclient|name:lockme")
         admin_router.ip_login_limiter.reset("testclient")
+
+
+def _send_module():
+    from importlib.util import module_from_spec, spec_from_file_location
+    from pathlib import Path
+    path = Path(__file__).resolve().parent.parent / "app/jobs/send_notifications.py"
+    spec = spec_from_file_location("send_notifications_ssrf_test", path)
+    job = module_from_spec(spec)
+    spec.loader.exec_module(job)
+    return job
+
+
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1:9000/hook",
+    "http://169.254.169.254/latest/meta-data",   # cloud metadata
+    "http://[::1]/hook",
+    "https://internal.example.com/hook",          # public name, private address
+    "https:///no-host",
+])
+def test_dashboard_webhook_must_be_public(client, auth, url):
+    r = _put(client, auth, WEBHOOK_ADDRESS=[url])
+    assert r.status_code == 400, r.text
+    assert "WEBHOOK_ADDRESS" in r.json()["detail"]
+
+
+def test_webhook_checked_again_at_send_time_without_redirects(client, auth, monkeypatch):
+    assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/hook"]).status_code == 200
+    job = _send_module()
+    calls = []
+    monkeypatch.setattr(job.session, "post", lambda url, **kw: calls.append((url, kw)) or type("R", (), {"ok": True})())
+
+    assert job.send_req("https://hooks.example.com/hook", [{"x": 1}]) is True
+    assert calls[0][1]["allow_redirects"] is False
+
+    FAKE_DNS["hooks.example.com"] = "127.0.0.1"  # DNS now points inside
+    try:
+        assert job.send_req("https://hooks.example.com/hook", [{"x": 1}]) is False
+        assert len(calls) == 1  # nothing sent
+    finally:
+        FAKE_DNS["hooks.example.com"] = "93.184.215.14"
+
+
+def test_env_webhook_may_be_local(monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, "WEBHOOK_ADDRESS", ["http://127.0.0.1:9000/hook"])
+    job = _send_module()
+    sent = []
+    monkeypatch.setattr(job.session, "post", lambda url, **kw: sent.append(url) or type("R", (), {"ok": True})())
+    assert job.send_req("http://127.0.0.1:9000/hook", []) is True
+    assert sent == ["http://127.0.0.1:9000/hook"]
