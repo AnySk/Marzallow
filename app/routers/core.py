@@ -3,7 +3,6 @@ import json
 import os
 import time
 
-import commentjson
 from fastapi import APIRouter, Depends, HTTPException, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
@@ -11,7 +10,7 @@ from app import xray
 from app.db import Session, get_db
 from app.models.admin import Admin
 from app.models.core import CoreStats
-from app.utils import responses
+from app.utils import jsonc, responses
 from app.xray import XRayConfig
 from config import XRAY_JSON
 
@@ -103,7 +102,7 @@ def restart_core(admin: Admin = Depends(Admin.check_sudo_admin)):
 def get_core_config(admin: Admin = Depends(Admin.check_sudo_admin)) -> dict:
     """Get the current core configuration."""
     with open(XRAY_JSON, "r") as f:
-        config = commentjson.loads(f.read())
+        config = jsonc.loads(f.read())
 
     return config
 

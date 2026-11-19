@@ -47,7 +47,7 @@ async def lifespan(_app: "FastAPI"):
 
 
 app = FastAPI(
-    title="MarzbanAPI",
+    title="Marzallow API",
     description="Unified GUI Censorship Resistant Solution Powered by Xray",
     version=__version__,
     docs_url="/docs" if DOCS else None,

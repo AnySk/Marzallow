@@ -1,8 +1,8 @@
 #!/bin/bash
 
-SERVICE_NAME="marzban"
-SERVICE_DESCRIPTION="Marzban Service"
-SERVICE_DOCUMENTATION="https://github.com/AnySk/MarzbanV2"
+SERVICE_NAME="marzallow"
+SERVICE_DESCRIPTION="Marzallow panel"
+SERVICE_DOCUMENTATION="https://github.com/AnySk/Marzallow"
 MAIN_PY_PATH="$PWD/main.py"
 PYTHON="$PWD/.venv/bin/python"
 

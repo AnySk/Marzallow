@@ -15,7 +15,7 @@ export const Footer: FC<BoxProps> = (props) => {
         fontSize="xs"
       >
         <Link color="blue.400" href={REPO_URL} isExternal>
-          MarzbanV2
+          Marzallow
         </Link>
         {version ? ` v${version}` : ""} · based on{" "}
         <Link color="blue.400" href={UPSTREAM_URL} isExternal>

@@ -14,7 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-_tmp = tempfile.mkdtemp(prefix="marzban-tests-")
+_tmp = tempfile.mkdtemp(prefix="marzallow-tests-")
 # the API can rewrite the xray config, so tests work on a copy
 shutil.copy(FIXTURES / "xray_config.json", f"{_tmp}/xray_config.json")
 
@@ -35,6 +35,12 @@ os.environ.update({
 })
 os.chdir(ROOT)  # alembic.ini and relative template paths are resolved from the repo root
 
+# The backend tests don't need the real dashboard (CI doesn't build it for this
+# job); serve a stand-in so startup never tries to run npm.
+_dashboard = Path(_tmp) / "dashboard"
+_dashboard.mkdir()
+(_dashboard / "index.html").write_text("<!doctype html><title>dashboard</title>")
+
 
 def _migrate():
     from alembic import command
@@ -46,6 +52,10 @@ def _migrate():
 _migrate()
 
 from fastapi.testclient import TestClient  # noqa: E402
+
+import app.dashboard  # noqa: E402
+
+app.dashboard.build_dir = _dashboard
 
 from app import app  # noqa: E402
 

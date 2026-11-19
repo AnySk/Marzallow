@@ -542,15 +542,6 @@ wheels = [
 ]
 
 [[package]]
-name = "commentjson"
-version = "0.9.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "lark-parser" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c0/76/c4aa9e408dbacee3f4de8e6c5417e5f55de7e62fb5a50300e1233a2c9cb5/commentjson-0.9.0.tar.gz", hash = "sha256:42f9f231d97d93aff3286a4dc0de39bfd91ae823d1d9eba9fa901fe0c7113dd4", size = 8653, upload-time = "2020-10-05T18:49:06.524Z" }
-
-[[package]]
 name = "cryptography"
 version = "50.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -999,10 +990,13 @@ wheels = [
 ]
 
 [[package]]
-name = "lark-parser"
-version = "0.7.8"
+name = "json5"
+version = "0.17.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/34/b8/aa7d6cf2d5efdd2fcd85cf39b33584fe12a0f7086ed451176ceb7fb510eb/lark-parser-0.7.8.tar.gz", hash = "sha256:26215ebb157e6fb2ee74319aa4445b9f3b7e456e26be215ce19fdaaa901c20a4", size = 276204, upload-time = "2019-11-01T12:45:26.558Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/16/1f/58a4d7ee466f81bc3c7337036380fc6d49de3afb7855d74f8121b1e89b32/json5-0.17.3.tar.gz", hash = "sha256:8d0278ad34ebaa9c3af76d9519274811830224a2d1cd5af156dbd067f461b8a4", size = 54234, upload-time = "2026-10-09T21:19:28.335Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/39/e689b616c4279a821d5842a8a85c1874540f8d58e35028df93f2182120c2/json5-0.17.3-py3-none-any.whl", hash = "sha256:2c8b22a893c35cd6a3c5ccbf1dd1c7d02c25dc1b5897fea658f9bf08c2e05f9a", size = 34809, upload-time = "2026-10-09T21:19:27.357Z" },
+]
 
 [[package]]
 name = "mako"
@@ -1142,7 +1136,7 @@ wheels = [
 ]
 
 [[package]]
-name = "marzban"
+name = "marzallow"
 version = "0.8.4"
 source = { virtual = "." }
 dependencies = [
@@ -1151,13 +1145,13 @@ dependencies = [
     { name = "apscheduler" },
     { name = "bcrypt" },
     { name = "click" },
-    { name = "commentjson" },
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "grpcio" },
     { name = "httptools" },
     { name = "jdatetime" },
     { name = "jinja2" },
+    { name = "json5" },
     { name = "protobuf" },
     { name = "psutil" },
     { name = "psycopg", extra = ["binary"] },
@@ -1197,13 +1191,13 @@ requires-dist = [
     { name = "apscheduler", specifier = ">=3.11.3,<4" },
     { name = "bcrypt", specifier = ">=5.0.0" },
     { name = "click", specifier = ">=8.5.1" },
-    { name = "commentjson", specifier = ">=0.9.0" },
     { name = "cryptography", specifier = ">=50.0.2" },
     { name = "fastapi", specifier = ">=0.165.0" },
     { name = "grpcio", specifier = ">=1.85.3" },
     { name = "httptools", specifier = ">=0.9.0" },
     { name = "jdatetime", specifier = ">=6.1.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "json5", specifier = ">=0.12" },
     { name = "protobuf", specifier = ">=7.36.2" },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.9" },

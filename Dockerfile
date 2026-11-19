@@ -65,8 +65,9 @@ COPY --from=xray /out/share/xray /usr/local/share/xray
 COPY . /code
 COPY --from=dashboard /dashboard/build /code/app/dashboard/build
 
-RUN ln -s /code/marzban-cli.py /usr/bin/marzban-cli \
-    && chmod +x /usr/bin/marzban-cli \
-    && marzban-cli completion install --shell bash
+RUN chmod +x /code/marzallow-cli.py \
+    && ln -s /code/marzallow-cli.py /usr/bin/marzallow-cli \
+    && ln -s /code/marzallow-cli.py /usr/bin/marzban-cli \
+    && marzallow-cli completion install --shell bash
 
 CMD ["bash", "-c", "alembic upgrade head; python main.py"]

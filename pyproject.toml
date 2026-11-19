@@ -1,7 +1,7 @@
 [project]
-name = "marzban"
+name = "marzallow"
 version = "0.8.4"
-description = "Proxy management panel powered by Xray (personal fork of Gozargah/Marzban)"
+description = "Marzallow: proxy management panel for Xray-core (fork of Gozargah/Marzban)"
 readme = "README.md"
 license = "AGPL-3.0-only"
 requires-python = ">=3.12"
@@ -12,13 +12,13 @@ dependencies = [
     "APScheduler>=3.11.3,<4",
     "bcrypt>=5.0.0",
     "click>=8.5.1",
-    "commentjson>=0.9.0",
     "cryptography>=50.0.2",
     "fastapi>=0.165.0",
     "grpcio>=1.85.3",
     "httptools>=0.9.0",
     "jdatetime>=6.1.1",
     "Jinja2>=3.1.6",
+    "json5>=0.12",
     "protobuf>=7.36.2",
     "psutil>=7.2.2",
     # PostgreSQL (postgresql:// URLs)
