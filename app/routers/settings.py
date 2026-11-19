@@ -68,6 +68,19 @@ def update_settings(
             coerced[key] = coerce(definition, value)
         except ValueError as err:
             errors[key] = str(err)
+    # The secret is never shown, but whoever receives the webhook gets it in a
+    # header. So moving the webhook while a secret is set requires providing the
+    # secret again (new or explicitly empty), or it would leak to the new address.
+    if "WEBHOOK_ADDRESS" in coerced and settings.WEBHOOK_SECRET:
+        restoring_env = coerced["WEBHOOK_ADDRESS"] is None and \
+            "WEBHOOK_SECRET" in coerced and coerced["WEBHOOK_SECRET"] is None
+        new_address = coerced["WEBHOOK_ADDRESS"]
+        if new_address is None:
+            new_address = settings.default("WEBHOOK_ADDRESS")
+        new_destinations = set(new_address or []) - set(settings.WEBHOOK_ADDRESS or [])
+        if new_destinations and not restoring_env and not isinstance(coerced.get("WEBHOOK_SECRET"), str):
+            errors["WEBHOOK_SECRET"] = ("enter the secret again (or leave it empty for none) "
+                                        "when changing the webhook address")
     if errors:
         raise HTTPException(status_code=400, detail=errors)
 

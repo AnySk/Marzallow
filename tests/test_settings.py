@@ -189,3 +189,22 @@ def test_env_webhook_may_be_local(monkeypatch):
     monkeypatch.setattr(job.session, "post", lambda url, **kw: sent.append(url) or type("R", (), {"ok": True})())
     assert job.send_req("http://127.0.0.1:9000/hook", []) is True
     assert sent == ["http://127.0.0.1:9000/hook"]
+
+
+def test_moving_webhook_requires_secret_again(client, auth):
+    assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/a"], WEBHOOK_SECRET="s3cr3t").status_code == 200
+
+    # changing only the address would send the hidden secret to the new host
+    r = _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/attacker"])
+    assert r.status_code == 400 and "WEBHOOK_SECRET" in r.json()["detail"]
+    # resetting the secret to the .env value in the same request isn't enough either
+    r = _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/attacker"], WEBHOOK_SECRET=None)
+    assert r.status_code == 400
+    assert settings.WEBHOOK_ADDRESS == ["https://hooks.example.com/a"]
+
+    # with the secret re-entered (or explicitly emptied) it's allowed
+    assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/b"], WEBHOOK_SECRET="new").status_code == 200
+    assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/c"], WEBHOOK_SECRET="").status_code == 200
+    assert settings.WEBHOOK_SECRET == ""
+    # unchanged address + other settings: no secret needed
+    assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/c"], NOTIFY_LOGIN=False).status_code == 200
