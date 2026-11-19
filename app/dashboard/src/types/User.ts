@@ -50,6 +50,17 @@ export type User = {
   inbounds: UserInbounds;
   note: string;
   online_at: string;
+  sub_updated_at?: string | null;
+  sub_last_user_agent?: string | null;
+  next_plan?: NextPlan | null;
+  admin?: { username: string; is_sudo: boolean } | null;
+};
+
+export type NextPlan = {
+  data_limit: number | null;
+  expire: number | null;
+  add_remaining_traffic: boolean;
+  fire_on_either: boolean;
 };
 
 export type UserCreate = Pick<

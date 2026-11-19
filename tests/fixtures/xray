@@ -1,0 +1,15 @@
+#!/bin/bash
+# Stub xray binary for tests.
+case "$1" in
+  version) echo "Xray 25.10.15 (Xray, Penetrates Everything.) stub" ;;
+  x25519) echo "PrivateKey: aPrivKeyStubaPrivKeyStubaPrivKeyStubaPrivKe"; echo "Password (PublicKey): aPubKeyStubaPubKeyStubaPubKeyStubaPubKeyStu" ;;
+  run)
+    config=$(cat)
+    # lets tests simulate a config that xray refuses to run
+    if [[ "$config" == *FAIL_TO_START* ]]; then
+      echo "Failed to start: stub rejected the config" >&2
+      exit 23
+    fi
+    echo "stub xray running"
+    exec sleep 3600 ;;
+esac

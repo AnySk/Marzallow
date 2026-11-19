@@ -7,13 +7,13 @@ from pathlib import PosixPath
 from typing import Union
 
 import commentjson
-from sqlalchemy import func
+from sqlalchemy import String, cast, func
 
 from app.db import GetDB
 from app.db import models as db_models
 from app.models.proxy import ProxyTypes
 from app.models.user import UserStatus
-from app.utils.crypto import get_cert_SANs
+from app.utils.crypto import get_cert_SANs, get_x25519_public_key
 from config import DEBUG, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
 
 
@@ -65,7 +65,6 @@ class XRayConfig(dict):
         api_inbound = self.get_inbound("API_INBOUND")
         if api_inbound:
             api_inbound["listen"] = self.api_host
-            api_inbound["listen"]["address"] = self.api_host
             api_inbound["port"] = self.api_port
             return
 
@@ -140,7 +139,24 @@ class XRayConfig(dict):
             if not outbound.get("tag"):
                 raise ValueError("all outbounds must have a unique tag")
 
+    def _fallback_parents(self) -> dict:
+        """Map "@name" fallback destinations to the inbound that falls back to them.
+
+        Covers settings.fallbacks[].dest and REALITY's own target/dest (used to
+        chain e.g. VLESS-TCP-REALITY -> VLESS-XHTTP-REALITY on one port).
+        """
+        parents = {}
+        for inbound in self['inbounds']:
+            dests = [fb.get('dest') for fb in inbound.get('settings', {}).get('fallbacks', []) or []]
+            reality = inbound.get('streamSettings', {}).get('realitySettings', {}) or {}
+            dests += [reality.get('target'), reality.get('dest')]
+            for dest in dests:
+                if isinstance(dest, str) and dest.startswith('@'):
+                    parents.setdefault(dest, inbound)
+        return parents
+
     def _resolve_inbounds(self):
+        fallback_parents = self._fallback_parents()
         for inbound in self['inbounds']:
             if not inbound['protocol'] in ProxyTypes._value2member_map_:
                 continue
@@ -166,13 +182,19 @@ class XRayConfig(dict):
                 "is_fallback": False
             }
 
-            # port settings
+            # port settings: an inbound without a port is reached through a
+            # fallback; its parent is the inbound whose fallback targets its
+            # "@listen" socket, else XRAY_FALLBACKS_INBOUND_TAG
+            parent = None
             try:
                 settings['port'] = inbound['port']
             except KeyError:
-                if self._fallbacks_inbound:
+                listen = inbound.get('listen')
+                parent = fallback_parents.get(listen) if isinstance(listen, str) else None
+                parent = parent or self._fallbacks_inbound
+                if parent:
                     try:
-                        settings['port'] = self._fallbacks_inbound['port']
+                        settings['port'] = parent['port']
                         settings['is_fallback'] = True
                     except KeyError:
                         raise ValueError("fallbacks inbound doesn't have port")
@@ -184,12 +206,12 @@ class XRayConfig(dict):
                 security = stream.get("security")
                 tls_settings = stream.get(f"{security}Settings")
 
-                if settings['is_fallback'] is True:
-                    # probably this is a fallback
-                    security = self._fallbacks_inbound.get(
-                        'streamSettings', {}).get('security')
-                    tls_settings = self._fallbacks_inbound.get(
-                        'streamSettings', {}).get(f"{security}Settings", {})
+                if settings['is_fallback'] is True and security in (None, 'none'):
+                    # clients reach a fallback inbound through its parent, so use
+                    # the parent's TLS/REALITY settings - unless the inbound has
+                    # its own (e.g. REALITY behind REALITY with different keys)
+                    security = parent.get('streamSettings', {}).get('security')
+                    tls_settings = parent.get('streamSettings', {}).get(f"{security}Settings", {})
 
                 settings['network'] = net
 
@@ -213,28 +235,22 @@ class XRayConfig(dict):
                             settings['sni'].extend(get_cert_SANs(cert))
 
                 elif security == 'reality':
-                    settings['fp'] = 'chrome'
+                    # "fingerprint" isn't a server-side setting, but if present use it for client links
+                    settings['fp'] = tls_settings.get('fingerprint') or 'chrome'
                     settings['tls'] = 'reality'
                     settings['sni'] = tls_settings.get('serverNames', [])
 
-                    try:
-                        settings['pbk'] = tls_settings['publicKey']
-                    except KeyError:
+                    # Xray 26 calls the public key "password"; older configs use "publicKey".
+                    settings['pbk'] = tls_settings.get('publicKey') or tls_settings.get('password')
+                    if not settings['pbk']:
                         pvk = tls_settings.get('privateKey')
                         if not pvk:
                             raise ValueError(
                                 f"You need to provide privateKey in realitySettings of {inbound['tag']}")
-
                         try:
-                            from app.xray import core
-                            x25519 = core.get_x25519(pvk)
-                            settings['pbk'] = x25519['public_key']
-                        except ImportError:
-                            pass
-
-                        if not settings.get('pbk'):
-                            raise ValueError(
-                                f"You need to provide publicKey in realitySettings of {inbound['tag']}")
+                            settings['pbk'] = get_x25519_public_key(pvk)
+                        except ValueError:
+                            raise ValueError(f"Invalid privateKey in realitySettings of {inbound['tag']}")
 
                     try:
                         settings['sids'] = tls_settings.get('shortIds')
@@ -243,8 +259,8 @@ class XRayConfig(dict):
                         raise ValueError(
                             f"You need to define at least one shortID in realitySettings of {inbound['tag']}")
                     try:
-                        settings['spx'] = tls_settings.get('SpiderX')
-                    except:
+                        settings['spx'] = tls_settings.get('spiderX') or tls_settings.get('SpiderX') or ""
+                    except Exception:
                         settings['spx'] = ""
 
                 if net in ('tcp', 'raw'):
@@ -362,12 +378,18 @@ class XRayConfig(dict):
         config = self.copy()
 
         with GetDB() as db:
+            tag_column = db_models.excluded_inbounds_association.c.inbound_tag
+            excluded_tags = (
+                func.string_agg(tag_column, ',') if db.bind.dialect.name == 'postgresql'
+                else func.group_concat(tag_column)
+            )
             query = db.query(
                 db_models.User.id,
                 db_models.User.username,
-                func.lower(db_models.Proxy.type).label('type'),
+                # cast: PostgreSQL has no lower() for enum types
+                func.lower(cast(db_models.Proxy.type, String)).label('type'),
                 db_models.Proxy.settings,
-                func.group_concat(db_models.excluded_inbounds_association.c.inbound_tag).label('excluded_inbound_tags')
+                excluded_tags.label('excluded_inbound_tags')
             ).join(
                 db_models.Proxy, db_models.User.id == db_models.Proxy.user_id
             ).outerjoin(
@@ -376,10 +398,11 @@ class XRayConfig(dict):
             ).filter(
                 db_models.User.status.in_([UserStatus.active, UserStatus.on_hold])
             ).group_by(
-                func.lower(db_models.Proxy.type),
+                # primary keys determine every selected column; grouping by the
+                # JSON settings column fails on PostgreSQL
+                db_models.Proxy.id,
                 db_models.User.id,
                 db_models.User.username,
-                db_models.Proxy.settings,
             )
             result = query.all()
 

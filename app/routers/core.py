@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import time
 
 import commentjson
@@ -35,7 +36,7 @@ async def core_logs(websocket: WebSocket, db: Session = Depends(get_db)):
             interval = float(interval)
         except ValueError:
             return await websocket.close(reason="Invalid interval value", code=4400)
-        if interval > 10:
+        if not 0 < interval <= 10:  # 0 or negative would busy-loop
             return await websocket.close(
                 reason="Interval must be more than 0 and at most 10 seconds", code=4400
             )
@@ -107,6 +108,16 @@ def get_core_config(admin: Admin = Depends(Admin.check_sudo_admin)) -> dict:
     return config
 
 
+def _wait_until_running(timeout: float = 2.0) -> bool:
+    """Xray exits right away on a config it can't load; give it a moment."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not xray.core.started:
+            return False
+        time.sleep(0.1)
+    return xray.core.started
+
+
 @router.put("/core/config", responses={403: responses._403})
 def modify_core_config(
     payload: dict, admin: Admin = Depends(Admin.check_sudo_admin)
@@ -117,12 +128,24 @@ def modify_core_config(
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err))
 
+    previous_config = xray.config
     xray.config = config
-    with open(XRAY_JSON, "w") as f:
-        f.write(json.dumps(payload, indent=4))
-
     startup_config = xray.config.include_db_users()
     xray.core.restart(startup_config)
+
+    # Only persist a config xray actually runs with; otherwise roll back so a
+    # bad config can't break the core (and the next boot).
+    if not _wait_until_running():
+        with xray.core.get_logs() as logs:
+            reason = next((line for line in reversed(logs) if line), "unknown error")
+        xray.config = previous_config
+        xray.core.restart(previous_config.include_db_users())
+        raise HTTPException(status_code=400, detail=f"Xray failed to start with this config: {reason}")
+
+    tmp_path = f"{XRAY_JSON}.tmp"
+    with open(tmp_path, "w") as f:
+        f.write(json.dumps(payload, indent=4))
+    os.replace(tmp_path, XRAY_JSON)  # atomic: never leaves a half-written config
     for node_id, node in list(xray.nodes.items()):
         if node.connected:
             xray.operations.restart_node(node_id, startup_config)

@@ -30,14 +30,27 @@ users_table = sa.Table(
 def upgrade() -> None:
     connection = op.get_bind()
 
-    # MySQL and SQLite handle datetime conversion differently
-    if connection.engine.name == "mysql":
+    # Each dialect converts UNIX timestamps differently; `status` is cast
+    # because PostgreSQL has no enum = varchar operator
+    if connection.engine.name == "postgresql":
+        # naive UTC timestamp, like the other branches
+        update_stmt = (
+            sa.update(users_table)
+            .where(
+                sa.and_(
+                    sa.cast(users_table.c.status, sa.String) == 'expired',
+                    users_table.c.expire.isnot(None)
+                )
+            )
+            .values(last_status_change=sa.text("to_timestamp(expire) AT TIME ZONE 'UTC'"))
+        )
+    elif connection.engine.name == "mysql":
         # For MySQL: Use FROM_UNIXTIME
         update_stmt = (
             sa.update(users_table)
             .where(
                 sa.and_(
-                    users_table.c.status == 'expired',
+                    sa.cast(users_table.c.status, sa.String) == 'expired',
                     users_table.c.expire.isnot(None)
                 )
             )
@@ -49,7 +62,7 @@ def upgrade() -> None:
             sa.update(users_table)
             .where(
                 sa.and_(
-                    users_table.c.status == 'expired',
+                    sa.cast(users_table.c.status, sa.String) == 'expired',
                     users_table.c.expire.isnot(None)
                 )
             )
@@ -68,7 +81,7 @@ def downgrade() -> None:
         sa.update(users_table)
         .where(
             sa.and_(
-                users_table.c.status == 'expired',
+                sa.cast(users_table.c.status, sa.String) == 'expired',
                 users_table.c.expire.isnot(None)
             )
         )

@@ -10,19 +10,53 @@ from app.dependencies import get_admin_by_username, validate_admin
 from app.models.admin import Admin, AdminCreate, AdminModify, Token
 from app.utils import report, responses
 from app.utils.jwt import create_admin_token
-from config import LOGIN_NOTIFY_WHITE_LIST
+from app.utils.ratelimit import LoginRateLimiter
+from config import SUDOERS, UVICORN_UDS_TRUST_FORWARDED_FOR
+from app.settings import settings as runtime_settings
 
 router = APIRouter(tags=["Admin"], prefix="/api", responses={401: responses._401})
 
 
+# Failed logins per (client IP, account), plus a looser cap per client IP so
+# spraying many usernames from one address is limited too.
+login_limiter = LoginRateLimiter(lambda: runtime_settings.LOGIN_MAX_FAILED_ATTEMPTS,
+                                 lambda: runtime_settings.LOGIN_LOCKOUT_SECONDS)
+ip_login_limiter = LoginRateLimiter(lambda: runtime_settings.LOGIN_MAX_FAILED_ATTEMPTS * 4,
+                                    lambda: runtime_settings.LOGIN_LOCKOUT_SECONDS)
+
+
+UNKNOWN_IP = "Unknown"
+
+
 def get_client_ip(request: Request) -> str:
-    """Extract the client's IP address from the request headers or client."""
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    if request.client:
+    """The client's IP address, or UNKNOWN_IP.
+
+    Over TCP, uvicorn resolves X-Forwarded-For itself, trusting only proxies in
+    FORWARDED_ALLOW_IPS (default 127.0.0.1). A UNIX socket has no peer address;
+    only if the operator confirms the proxy appends the client address
+    (UVICORN_UDS_TRUST_FORWARDED_FOR) is the last X-Forwarded-For entry used -
+    clients can only add entries before it.
+    """
+    if request.client and request.client.host:
         return request.client.host
-    return "Unknown"
+    if UVICORN_UDS_TRUST_FORWARDED_FOR:
+        last_hop = request.headers.get("X-Forwarded-For", "").split(",")[-1].strip()
+        if last_hop:
+            return last_hop
+    return UNKNOWN_IP
+
+
+def _account_key(db: Session, username: str) -> str:
+    """The account a login attempt targets, as the database would resolve it.
+
+    Case/whitespace variants ("Admin", "admin ") may map to the same admin
+    (e.g. MySQL collations), so they must share a limiter key.
+    """
+    if username in SUDOERS:
+        return f"sudo:{username}"
+    dbadmin = crud.get_admin(db, username)
+    canonical = dbadmin.username if dbadmin else username
+    return "name:" + canonical.strip().lower()
 
 
 @router.post("/admin/token", response_model=Token)
@@ -33,17 +67,40 @@ def admin_token(
 ):
     """Authenticate an admin and issue a token."""
     client_ip = get_client_ip(request)
+    # Unknown IP (proxy sends no client address): still limit per account
+    # rather than not at all; see FORWARDED_ALLOW_IPS in .env.example.
+    account_key = f"{client_ip}|{_account_key(db, form_data.username)}"
+
+    # The per-IP cap needs a real IP: with an unknown one it would be a single
+    # global counter that anyone could exhaust to lock everybody out.
+    ip_known = client_ip != UNKNOWN_IP
+    retry_after = max(login_limiter.retry_after(account_key),
+                      ip_login_limiter.retry_after(client_ip) if ip_known else 0)
+    if retry_after:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts, try again later",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     dbadmin = validate_admin(db, form_data.username, form_data.password)
     if not dbadmin:
-        report.login(form_data.username, form_data.password, client_ip, False)
+        failures = login_limiter.record_failure(account_key)
+        if ip_known:
+            ip_login_limiter.record_failure(client_ip)
+        # Notify on the first failure and when the lockout starts, not on every
+        # attempt (brute-force bots otherwise flood the channel). Never forward
+        # the attempted password.
+        if failures <= 1 or failures == login_limiter.max_failures:
+            report.login(form_data.username, "🔒", client_ip, False)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if client_ip not in LOGIN_NOTIFY_WHITE_LIST:
+    login_limiter.reset(account_key)
+    if not ip_known or client_ip not in runtime_settings.LOGIN_NOTIFY_WHITE_LIST:
         report.login(form_data.username, "🔒", client_ip, True)
 
     return Token(access_token=create_admin_token(form_data.username, dbadmin.is_sudo))

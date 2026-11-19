@@ -14,7 +14,7 @@ import {
 import { FetchNodesQueryKey, useNodes } from "contexts/NodesContext";
 import { FC } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { useMutation, useQueryClient } from "react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   generateErrorMessage,
   generateSuccessMessage,
@@ -33,14 +33,15 @@ export const DeleteNodeModal: FC<DeleteUserModalProps> = ({
     setDeletingNode(null);
   };
 
-  const { isLoading, mutate: onDelete } = useMutation(deleteNode, {
+  const { isPending: isLoading, mutate: onDelete } = useMutation({
+    mutationFn: deleteNode,
     onSuccess: () => {
       generateSuccessMessage(
         t("deleteNode.deleteSuccess", {name: deletingNode && deletingNode.name}),
         toast
       );
       setDeletingNode(null);
-      queryClient.invalidateQueries(FetchNodesQueryKey);
+      queryClient.invalidateQueries({ queryKey: FetchNodesQueryKey });
       deleteCallback && deleteCallback();
     },
     onError: (e) => {

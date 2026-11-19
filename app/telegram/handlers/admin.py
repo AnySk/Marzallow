@@ -6,6 +6,7 @@ import random
 import re
 import string
 from datetime import datetime
+from typing import Optional
 
 import qrcode
 import sqlalchemy
@@ -14,8 +15,10 @@ from telebot import types
 from telebot.apihelper import ApiTelegramException
 from telebot.util import extract_arguments, user_link
 
-from app import xray
+from app import logger, xray
 from app.db import GetDB, crud
+from app.models.admin import Admin
+from app.utils import report
 from app.models.proxy import ProxyTypes
 from app.models.user import (
     UserCreate,
@@ -40,6 +43,68 @@ from app.utils.system import cpu_usage, memory_usage, readable_size, realtime_ba
 from config import TELEGRAM_DEFAULT_VLESS_FLOW, TELEGRAM_LOGGER_CHANNEL_ID
 
 mem_store = MemoryStorage()
+
+# Actor reported to webhooks/Discord for changes made through the bot.
+BOT_ADMIN = Admin(username="telegram-bot", is_sudo=True)
+
+
+def _owner(db_user):
+    """The admin that owns a user, as reported by the REST API."""
+    try:
+        return Admin.model_validate(db_user.admin) if db_user.admin else None
+    except Exception:
+        return None
+
+
+def notify_external(event: str, user: Optional[UserResponse], owner: Admin = None, status: UserStatus = None):
+    """Send the webhook and Discord notifications the REST API sends for the same action.
+
+    This mirrors app.utils.report without its Telegram part: the bot already
+    posts its own (more detailed) message to the Telegram log channel, so going
+    through report.* would post every action there twice. Never raises.
+    """
+    if user is None:
+        return
+    try:
+        _notify_external(event, user, owner, status)
+    except Exception:
+        logger.exception(f"Failed to send {event} notification for {user.username}")
+
+
+def _notify_external(event, user, owner, status):
+    by, kw = BOT_ADMIN, {"include_telegram": False}
+    if event == "created":
+        report.user_created(user=user, user_id=None, by=by, user_admin=owner, **kw)
+    elif event == "updated":
+        report.user_updated(user=user, by=by, user_admin=owner, **kw)
+    elif event == "deleted":
+        report.user_deleted(username=user.username, by=by, user_admin=owner, **kw)
+    elif event == "usage_reset":
+        report.user_data_usage_reset(user=user, by=by, user_admin=owner, **kw)
+    elif event == "subscription_revoked":
+        report.user_subscription_revoked(user=user, by=by, user_admin=owner, **kw)
+    elif event == "status":
+        report.status_change(username=user.username, status=status, user=user,
+                             user_admin=owner, by=by, **kw)
+
+
+def _snapshot(db_user):
+    """(UserResponse, owner) for reporting; (None, None) if it can't be built."""
+    try:
+        return UserResponse.model_validate(db_user), _owner(db_user)
+    except Exception:
+        logger.exception("Failed to build user snapshot for notifications")
+        return None, None
+
+
+def notify_user_change(event: str, db_user, before_status: UserStatus = None):
+    """Report `event` for a just-modified user, plus a status change if any. Never raises."""
+    user, owner = _snapshot(db_user)
+    if user is None:
+        return
+    notify_external(event, user, owner)
+    if before_status is not None and user.status != before_status:
+        notify_external("status", user, owner, status=user.status)
 
 
 def get_system_info():
@@ -620,6 +685,7 @@ def edit_note_step(message: types.Message):
         modify = UserModify(note=note)
         db_user = crud.update_user(db, db_user, modify)
         user = UserResponse.model_validate(db_user)
+        notify_user_change("updated", db_user)
         bot.reply_to(
             message, get_user_info_text(db_user), parse_mode="html",
             reply_markup=BotKeyboard.user_menu(user_info={'status': user.status, 'username': user.username}))
@@ -806,6 +872,7 @@ def template_charge_command(call: types.CallbackQuery):
                     username=username, template_id=template_id))
         elif (not user.data_limit and not user.expire) or (user.used_traffic > user.data_limit) or (now > datetime.fromtimestamp(user.expire)):
             crud.reset_user_data_usage(db, db_user)
+            notify_user_change("usage_reset", db_user)
             expire_date = None
             if template.expire_duration:
                 expire_date = today + relativedelta(seconds=template.expire_duration)
@@ -816,6 +883,7 @@ def template_charge_command(call: types.CallbackQuery):
             )
             db_user = crud.update_user(db, db_user, modify)
             xray.operations.add_user(db_user)
+            notify_user_change("updated", db_user, before_status=user.status)
             bot.answer_callback_query(call.id, "🔋 User Successfully Charged!")
             bot.edit_message_text(
                 get_user_info_text(db_user),
@@ -1492,8 +1560,10 @@ def confirm_user_command(call: types.CallbackQuery):
         username = call.data.split(':')[2]
         with GetDB() as db:
             db_user = crud.get_user(db, username)
+            deleted_user, owner = _snapshot(db_user)
             crud.remove_user(db, db_user)
             xray.operations.remove_user(db_user)
+        notify_external("deleted", deleted_user, owner)
 
         bot.edit_message_text(
             '✅ User deleted.',
@@ -1519,9 +1589,11 @@ def confirm_user_command(call: types.CallbackQuery):
         username = call.data.split(":")[2]
         with GetDB() as db:
             db_user = crud.get_user(db, username)
+            before_status = db_user.status
             crud.update_user(db, db_user, UserModify(
                 status=UserStatusModify.disabled))
             xray.operations.remove_user(db_user)
+            notify_user_change("updated", db_user, before_status=before_status)
             bot.edit_message_text(
                 get_user_info_text(db_user),
                 call.message.chat.id,
@@ -1543,9 +1615,11 @@ def confirm_user_command(call: types.CallbackQuery):
         username = call.data.split(":")[2]
         with GetDB() as db:
             db_user = crud.get_user(db, username)
+            before_status = db_user.status
             crud.update_user(db, db_user, UserModify(
                 status=UserStatusModify.active))
             xray.operations.add_user(db_user)
+            notify_user_change("updated", db_user, before_status=before_status)
             bot.edit_message_text(
                 get_user_info_text(db_user),
                 call.message.chat.id,
@@ -1567,10 +1641,12 @@ def confirm_user_command(call: types.CallbackQuery):
         username = call.data.split(":")[2]
         with GetDB() as db:
             db_user = crud.get_user(db, username)
+            before_status = db_user.status
             crud.reset_user_data_usage(db, db_user)
             if db_user.status in [UserStatus.active, UserStatus.on_hold]:
                 xray.operations.add_user(db_user)
             user = UserResponse.model_validate(db_user)
+            notify_user_change("usage_reset", db_user, before_status=before_status)
             bot.edit_message_text(
                 get_user_info_text(db_user),
                 call.message.chat.id,
@@ -1625,6 +1701,7 @@ def confirm_user_command(call: types.CallbackQuery):
                     del proxies[protocol]
 
             crud.reset_user_data_usage(db, db_user)
+            notify_user_change("usage_reset", db_user)
             if data == 'charge_reset':
                 expire_date = None
                 if template.expire_duration:
@@ -1646,6 +1723,7 @@ def confirm_user_command(call: types.CallbackQuery):
                 )
             db_user = crud.update_user(db, db_user, modify)
             xray.operations.add_user(db_user)
+            notify_user_change("updated", db_user, before_status=user.status)
             bot.answer_callback_query(call.id, "🔋 User Successfully Charged!")
             bot.edit_message_text(
                 get_user_info_text(db_user),
@@ -1738,6 +1816,7 @@ def confirm_user_command(call: types.CallbackQuery):
 
             if user.status == UserStatus.active:
                 xray.operations.update_user(db_user)
+            notify_user_change("updated", db_user, before_status=last_user.status)
 
             bot.answer_callback_query(call.id, "✅ User updated successfully.")
             bot.edit_message_text(
@@ -1858,6 +1937,7 @@ def confirm_user_command(call: types.CallbackQuery):
                     proxies = db_user.proxies
                     user = UserResponse.model_validate(db_user)
                     xray.operations.add_user(db_user)
+                    notify_external("created", *_snapshot(db_user))
                     if mem_store.get(f"{call.message.chat.id}:is_bulk", False):
                         schedule_delete_message(call.message.chat.id, call.message.id)
                         cleanup_messages(call.message.chat.id)
@@ -1921,8 +2001,10 @@ def confirm_user_command(call: types.CallbackQuery):
                 deleted = 0
                 for user in depleted_users:
                     try:
+                        deleted_user, owner = _snapshot(user)
                         crud.remove_user(db, user)
                         xray.operations.remove_user(user)
+                        notify_external("deleted", deleted_user, owner)
                         deleted += 1
                         f.write(
                             f'{user.username}\
@@ -1966,6 +2048,7 @@ def confirm_user_command(call: types.CallbackQuery):
                     try:
                         if user.data_limit and user.status not in [UserStatus.limited, UserStatus.expired]:
                             user = crud.update_user(db, user, UserModify(data_limit=(user.data_limit + data_limit)))
+                            notify_user_change("updated", user)
                             counter += 1
                             f.write(
                                 f'{user.username}\
@@ -2016,6 +2099,7 @@ def confirm_user_command(call: types.CallbackQuery):
                                 UserModify(
                                     expire=int(
                                         (datetime.fromtimestamp(user.expire) + relativedelta(days=days)).timestamp())))
+                            notify_user_change("updated", user)
                             counter += 1
                             f.write(
                                 f'{user.username}\
@@ -2084,6 +2168,7 @@ def confirm_user_command(call: types.CallbackQuery):
                         user = crud.update_user(db, user, UserModify(inbounds=new_inbounds, proxies=proxies))
                         if user.status == UserStatus.active:
                             xray.operations.update_user(user)
+                        notify_user_change("updated", user)
                     except:
                         db.rollback()
                         unsuccessful += 1
@@ -2116,6 +2201,7 @@ def confirm_user_command(call: types.CallbackQuery):
                 return bot.answer_callback_query(call.id, text=f"User not found!", show_alert=True)
             db_user = crud.revoke_user_sub(db, db_user)
             user = UserResponse.model_validate(db_user)
+            notify_user_change("subscription_revoked", db_user)
             bot.answer_callback_query(call.id, "✅ Subscription Successfully Revoked!")
             bot.edit_message_text(
                 get_user_info_text(db_user),

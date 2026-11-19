@@ -5,7 +5,11 @@ export function formatBytes(bytes: number, decimals = 2, asArray = false) {
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
 
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  // clamp: fractions of a byte (e.g. chart axis ticks) would index sizes[-1]
+  const i = Math.min(
+    sizes.length - 1,
+    Math.max(0, Math.floor(Math.log(bytes) / Math.log(k)))
+  );
   if (!asArray)
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
   else return [parseFloat((bytes / Math.pow(k, i)).toFixed(dm)), sizes[i]];

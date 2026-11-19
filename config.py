@@ -11,6 +11,10 @@ SQLIALCHEMY_MAX_OVERFLOW = config("SQLIALCHEMY_MAX_OVERFLOW", cast=int, default=
 UVICORN_HOST = config("UVICORN_HOST", default="0.0.0.0")
 UVICORN_PORT = config("UVICORN_PORT", cast=int, default=8000)
 UVICORN_UDS = config("UVICORN_UDS", default=None)
+# With UVICORN_UDS there is no client address; set this only if the reverse
+# proxy appends the client address to X-Forwarded-For (nginx:
+# proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;).
+UVICORN_UDS_TRUST_FORWARDED_FOR = config("UVICORN_UDS_TRUST_FORWARDED_FOR", default=False, cast=bool)
 UVICORN_SSL_CERTFILE = config("UVICORN_SSL_CERTFILE", default=None)
 UVICORN_SSL_KEYFILE = config("UVICORN_SSL_KEYFILE", default=None)
 UVICORN_SSL_CA_TYPE = config("UVICORN_SSL_CA_TYPE", default="public").lower()
@@ -19,7 +23,10 @@ DASHBOARD_PATH = config("DASHBOARD_PATH", default="/dashboard/")
 DEBUG = config("DEBUG", default=False, cast=bool)
 DOCS = config("DOCS", default=False, cast=bool)
 
-ALLOWED_ORIGINS = config("ALLOWED_ORIGINS", default="*").split(",")
+# Comma-separated origins allowed to call the API from a browser. Empty (default)
+# means same-origin only, which is all the bundled dashboard needs. Use "*" to
+# allow any origin (the API uses bearer tokens, so credentials are never allowed).
+ALLOWED_ORIGINS = [o.strip() for o in config("ALLOWED_ORIGINS", default="").split(",") if o.strip()]
 
 VITE_BASE_API = f"http://127.0.0.1:{UVICORN_PORT}/api/" \
     if DEBUG and config("VITE_BASE_API", default="/api/") == "/api/" \
@@ -31,6 +38,8 @@ XRAY_FALLBACKS_INBOUND_TAG = config("XRAY_FALLBACKS_INBOUND_TAG", cast=str, defa
 )
 XRAY_EXECUTABLE_PATH = config("XRAY_EXECUTABLE_PATH", default="/usr/local/bin/xray")
 XRAY_ASSETS_PATH = config("XRAY_ASSETS_PATH", default="/usr/local/share/xray")
+# Port of xray's gRPC API (on 127.0.0.1). 0 = pick a random free port at startup.
+XRAY_API_PORT = config("XRAY_API_PORT", cast=int, default=0)
 XRAY_EXCLUDE_INBOUND_TAGS = config("XRAY_EXCLUDE_INBOUND_TAGS", default='').split()
 XRAY_SUBSCRIPTION_URL_PREFIX = config("XRAY_SUBSCRIPTION_URL_PREFIX", default="").strip("/")
 XRAY_SUBSCRIPTION_PATH = config("XRAY_SUBSCRIPTION_PATH", default="sub").strip("/")
@@ -68,6 +77,10 @@ GRPC_USER_AGENT_TEMPLATE = config("GRPC_USER_AGENT_TEMPLATE", default="user_agen
 EXTERNAL_CONFIG = config("EXTERNAL_CONFIG", default="", cast=str)
 LOGIN_NOTIFY_WHITE_LIST = [ip.strip() for ip in config("LOGIN_NOTIFY_WHITE_LIST",
                                                        default="", cast=str).split(",") if ip.strip()]
+# Brute-force protection: lock out a client IP after this many failed logins
+# within LOGIN_LOCKOUT_SECONDS. Set either to 0 to disable.
+LOGIN_MAX_FAILED_ATTEMPTS = config("LOGIN_MAX_FAILED_ATTEMPTS", cast=int, default=5)
+LOGIN_LOCKOUT_SECONDS = config("LOGIN_LOCKOUT_SECONDS", cast=int, default=900)
 
 USE_CUSTOM_JSON_DEFAULT = config("USE_CUSTOM_JSON_DEFAULT", default=False, cast=bool)
 USE_CUSTOM_JSON_FOR_V2RAYN = config("USE_CUSTOM_JSON_FOR_V2RAYN", default=False, cast=bool)

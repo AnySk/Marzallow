@@ -1,0 +1,57 @@
+[project]
+name = "marzban"
+version = "0.8.4"
+description = "Proxy management panel powered by Xray (personal fork of Gozargah/Marzban)"
+readme = "README.md"
+license = "AGPL-3.0-only"
+requires-python = ">=3.12"
+# Direct runtime dependencies only. Exact versions (with hashes) live in uv.lock.
+dependencies = [
+    "alembic>=1.20.1",
+    "anyio>=4.16.0",
+    "APScheduler>=3.11.3,<4",
+    "bcrypt>=5.0.0",
+    "click>=8.5.1",
+    "commentjson>=0.9.0",
+    "cryptography>=50.0.2",
+    "fastapi>=0.165.0",
+    "grpcio>=1.85.3",
+    "httptools>=0.9.0",
+    "jdatetime>=6.1.1",
+    "Jinja2>=3.1.6",
+    "protobuf>=7.36.2",
+    "psutil>=7.2.2",
+    # PostgreSQL (postgresql:// URLs)
+    "psycopg[binary]>=3.3.9",  # PostgreSQL (postgresql:// URLs)
+    "pydantic>=2.14.3",
+    "PyJWT>=2.15.1",
+    "PyMySQL>=1.2.4",
+    "pyOpenSSL>=26.4.0",
+    "pyTelegramBotAPI>=4.37.1",
+    "python-dateutil>=4.0.0",
+    "python-decouple>=3.8",
+    "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.34",
+    "PyYAML>=6.0.3",
+    "qrcode>=8.2",
+    "requests[socks]>=2.34.2",
+    "rich>=15.0.0",
+    "rpyc>=6.0.2,<7",
+    "SQLAlchemy>=2.1.9",
+    "starlette>=1.10.0",
+    "typer>=0.29.2",
+    "uvicorn>=0.54.0",
+    "websocket-client>=1.9.2",
+    "websockets>=17.4",
+]
+
+[dependency-groups]
+dev = [
+    "grpcio-tools>=1.85.3",  # regenerate xray_api/proto (xray_api/proto/compile.py)
+    "httpx>=0.28.1",         # FastAPI TestClient
+    "pytest>=9.0.0",
+]
+
+[tool.uv]
+# The app is run from the source tree (python main.py), not installed as a package.
+package = false

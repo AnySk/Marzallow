@@ -305,7 +305,7 @@ class BotKeyboard:
                 keyboard.add(types.InlineKeyboardButton(text="⏳ Duration:", callback_data=f"edit_user:{username}:expire"))
                 keyboard.add(
                     types.InlineKeyboardButton(
-                        text=f"{int(expire_on_hold_duration / 24 / 60 / 60)} روز",
+                        text=f"{int(expire_on_hold_duration / 24 / 60 / 60)} days",
                         callback_data=f"edit_user:{username}:expire"
                     ),
                     types.InlineKeyboardButton(text="✏️ Edit", callback_data=f"edit_user:{username}:expire"))

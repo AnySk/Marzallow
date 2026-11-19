@@ -160,3 +160,7 @@ xray-core
 *-dev.yml
 *-dev.yaml
 *-debug.*
+
+# Dashboard build output (built by Docker / build_dashboard.sh)
+app/dashboard/build/
+app/dashboard/stats.html

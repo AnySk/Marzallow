@@ -1,3 +1,4 @@
+import time
 """
 Functions for managing proxy hosts, users, user templates, nodes, and administrative tasks.
 """
@@ -43,7 +44,8 @@ from app.models.user import (
 )
 from app.models.user_template import UserTemplateCreate, UserTemplateModify
 from app.utils.helpers import calculate_expiration_days, calculate_usage_percent
-from config import NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT, USERS_AUTODELETE_DAYS
+from app.settings import settings as runtime_settings
+
 
 
 def add_default_host(db: Session, inbound: ProxyInbound):
@@ -159,6 +161,8 @@ def update_hosts(db: Session, inbound_tag: str, modified_hosts: List[ProxyHostMo
             noise_setting=host.noise_setting,
             random_user_agent=host.random_user_agent,
             use_sni_as_host=host.use_sni_as_host,
+            pinned_peer_cert_sha256=host.pinned_peer_cert_sha256,
+            verify_peer_cert_by_name=host.verify_peer_cert_by_name,
         ) for host in modified_hosts
     ]
     db.commit()
@@ -218,6 +222,9 @@ UsersSortingOptions = Enum('UsersSortingOptions', {
     '-data_limit': User.data_limit.desc(),
     '-expire': User.expire.desc(),
     '-created_at': User.created_at.desc(),
+    # never-online users last in both directions (portable: MySQL has no NULLS LAST)
+    'online_at': (User.online_at.is_(None), User.online_at.asc()),
+    '-online_at': (User.online_at.is_(None), User.online_at.desc()),
 })
 
 
@@ -231,6 +238,9 @@ def get_users(db: Session,
               admin: Optional[Admin] = None,
               admins: Optional[List[str]] = None,
               reset_strategy: Optional[Union[UserDataLimitResetStrategy, list]] = None,
+              expire_before: Optional[int] = None,
+              usage_ratio_above: Optional[float] = None,
+              online_since: Optional[datetime] = None,
               return_with_count: bool = False) -> Union[List[User], Tuple[List[User], int]]:
     """
     Retrieves users based on various filters and options.
@@ -277,11 +287,24 @@ def get_users(db: Session,
     if admins:
         query = query.filter(User.admin.has(Admin.username.in_(admins)))
 
+    if expire_before is not None:  # users with an expiry date up to this UNIX time
+        query = query.filter(User.expire.isnot(None), User.expire > 0, User.expire <= expire_before)
+
+    if usage_ratio_above is not None:  # used at least this share of a data limit
+        query = query.filter(User.data_limit.isnot(None), User.data_limit > 0,
+                             User.used_traffic >= User.data_limit * usage_ratio_above)
+
+    if online_since is not None:
+        query = query.filter(User.online_at >= online_since)
+
     if return_with_count:
         count = query.count()
 
     if sort:
-        query = query.order_by(*(opt.value for opt in sort))
+        clauses = []
+        for opt in sort:
+            clauses.extend(opt.value if isinstance(opt.value, tuple) else (opt.value,))
+        query = query.order_by(*clauses)
 
     if offset:
         query = query.offset(offset)
@@ -478,7 +501,7 @@ def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
                 if dbuser.status != UserStatus.on_hold:
                     dbuser.status = UserStatus.active
 
-                for percent in sorted(NOTIFY_REACHED_USAGE_PERCENT, reverse=True):
+                for percent in sorted(runtime_settings.NOTIFY_REACHED_USAGE_PERCENT, reverse=True):
                     if not dbuser.data_limit or (calculate_usage_percent(
                             dbuser.used_traffic, dbuser.data_limit) < percent):
                         reminder = get_notification_reminder(db, dbuser.id, ReminderType.data_usage, threshold=percent)
@@ -491,9 +514,9 @@ def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
     if modify.expire is not None:
         dbuser.expire = (modify.expire or None)
         if dbuser.status in (UserStatus.active, UserStatus.expired):
-            if not dbuser.expire or dbuser.expire > datetime.utcnow().timestamp():
+            if not dbuser.expire or dbuser.expire > time.time():
                 dbuser.status = UserStatus.active
-                for days_left in sorted(NOTIFY_DAYS_LEFT):
+                for days_left in sorted(runtime_settings.NOTIFY_DAYS_LEFT):
                     if not dbuser.expire or (calculate_expiration_days(
                             dbuser.expire) > days_left):
                         reminder = get_notification_reminder(
@@ -551,7 +574,8 @@ def reset_user_data_usage(db: Session, dbuser: User) -> User:
 
     dbuser.used_traffic = 0
     dbuser.node_usages.clear()
-    if dbuser.status not in (UserStatus.expired or UserStatus.disabled):
+    # disabled/expired users stay that way; only limited users are reactivated
+    if dbuser.status not in (UserStatus.expired, UserStatus.disabled):
         dbuser.status = UserStatus.active.value
 
     if dbuser.next_plan:
@@ -588,8 +612,9 @@ def reset_user_by_next(db: Session, dbuser: User) -> User:
     dbuser.node_usages.clear()
     dbuser.status = UserStatus.active.value
 
+    remaining = max((dbuser.data_limit or 0) - dbuser.used_traffic, 0)
     dbuser.data_limit = dbuser.next_plan.data_limit + \
-        (0 if dbuser.next_plan.add_remaining_traffic else dbuser.data_limit - dbuser.used_traffic)
+        (remaining if dbuser.next_plan.add_remaining_traffic else 0)
     dbuser.expire = dbuser.next_plan.expire
 
     dbuser.used_traffic = 0
@@ -639,7 +664,7 @@ def update_user_sub(db: Session, dbuser: User, user_agent: str) -> User:
         User: The updated user object.
     """
     dbuser.sub_updated_at = datetime.utcnow()
-    dbuser.sub_last_user_agent = user_agent
+    dbuser.sub_last_user_agent = user_agent[:512]  # column limit
 
     db.commit()
     db.refresh(dbuser)
@@ -734,7 +759,7 @@ def autodelete_expired_users(db: Session,
         else [UserStatus.expired, UserStatus.limited]
     )
 
-    auto_delete = coalesce(User.auto_delete_in_days, USERS_AUTODELETE_DAYS)
+    auto_delete = coalesce(User.auto_delete_in_days, runtime_settings.USERS_AUTODELETE_DAYS)
 
     query = db.query(
         User, auto_delete,  # Use global auto-delete days as fallback
@@ -853,7 +878,7 @@ def start_user_expire(db: Session, dbuser: User) -> User:
     Returns:
         User: The updated user object.
     """
-    expire = int(datetime.utcnow().timestamp()) + dbuser.on_hold_expire_duration
+    expire = int(time.time()) + dbuser.on_hold_expire_duration
     dbuser.expire = expire
     dbuser.on_hold_expire_duration = None
     dbuser.on_hold_timeout = None
@@ -951,7 +976,7 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     Returns:
         Admin: The updated admin object.
     """
-    if modified_admin.is_sudo:
+    if modified_admin.is_sudo is not None:  # allow demoting a sudo admin
         dbadmin.is_sudo = modified_admin.is_sudo
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password
@@ -1498,3 +1523,27 @@ def count_online_users(db: Session, hours: int = 24):
     query = db.query(func.count(User.id)).filter(User.online_at.isnot(
         None), User.online_at >= twenty_four_hours_ago)
     return query.scalar()
+
+
+def get_user_reset_logs(db: Session, dbuser: User, limit: int = 50) -> List[UserUsageResetLogs]:
+    """A user's usage resets, newest first."""
+    return (db.query(UserUsageResetLogs)
+            .filter(UserUsageResetLogs.user_id == dbuser.id)
+            # id breaks ties: MySQL DATETIME has 1-second resolution
+            .order_by(UserUsageResetLogs.reset_at.desc(), UserUsageResetLogs.id.desc())
+            .limit(limit).all())
+
+
+def get_daily_usage(db: Session, start: datetime, end: datetime,
+                    admins: Optional[List[str]] = None, username: Optional[str] = None) -> List[dict]:
+    """Total user traffic per UTC day (from the hourly per-node records)."""
+    day = func.date(NodeUserUsage.created_at)  # date() exists on SQLite, MySQL and PostgreSQL
+    query = (db.query(day.label("day"), func.sum(NodeUserUsage.used_traffic))
+             .join(User, NodeUserUsage.user_id == User.id)
+             .filter(NodeUserUsage.created_at >= start, NodeUserUsage.created_at <= end))
+    if admins:
+        query = query.filter(User.admin.has(Admin.username.in_(admins)))
+    if username:
+        query = query.filter(User.username == username)
+    rows = query.group_by(day).order_by(day).all()
+    return [{"date": str(d)[:10], "used_traffic": int(total or 0)} for d, total in rows]

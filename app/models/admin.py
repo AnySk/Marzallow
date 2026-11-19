@@ -1,15 +1,21 @@
+import hmac
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from passlib.context import CryptContext
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.db import Session, crud, get_db
-from app.utils.jwt import get_admin_payload
+from app.utils.jwt import get_admin_payload, sudoer_password_fingerprint
+from app.utils.password import hash_password, verify_password
 from config import SUDOERS
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# The trailing path also stops look-alike hosts such as "discord.com.example.org".
+DISCORD_WEBHOOK_PREFIXES = (
+    "https://discord.com/api/webhooks/",
+    "https://ptb.discord.com/api/webhooks/",
+    "https://canary.discord.com/api/webhooks/",
+)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/admin/token")  # Admin view url
 
 
@@ -43,6 +49,12 @@ class Admin(BaseModel):
             return
 
         if payload['username'] in SUDOERS and payload['is_sudo'] is True:
+            # Tokens issued before SUDO_PASSWORD changed (or without a
+            # fingerprint at all) are rejected.
+            expected = sudoer_password_fingerprint(payload['username'])
+            fingerprint = payload.get('sudo_fingerprint') or ''
+            if not hmac.compare_digest(fingerprint, expected):
+                return
             return cls(username=payload['username'], is_sudo=True)
 
         dbadmin = crud.get_admin(db, payload['username'])
@@ -96,13 +108,13 @@ class AdminCreate(Admin):
 
     @property
     def hashed_password(self):
-        return pwd_context.hash(self.password)
+        return hash_password(self.password)
 
     @field_validator("discord_webhook")
     @classmethod
     def validate_discord_webhook(cls, value):
-        if value and not value.startswith("https://discord.com"):
-            raise ValueError("Discord webhook must start with 'https://discord.com'")
+        if value and not value.startswith(DISCORD_WEBHOOK_PREFIXES):
+            raise ValueError("Discord webhook must be a discord.com (or ptb/canary) webhook URL")
         return value
 
 
@@ -115,13 +127,13 @@ class AdminModify(BaseModel):
     @property
     def hashed_password(self):
         if self.password:
-            return pwd_context.hash(self.password)
+            return hash_password(self.password)
 
     @field_validator("discord_webhook")
     @classmethod
     def validate_discord_webhook(cls, value):
-        if value and not value.startswith("https://discord.com"):
-            raise ValueError("Discord webhook must start with 'https://discord.com'")
+        if value and not value.startswith(DISCORD_WEBHOOK_PREFIXES):
+            raise ValueError("Discord webhook must be a discord.com (or ptb/canary) webhook URL")
         return value
 
 
@@ -134,7 +146,7 @@ class AdminInDB(Admin):
     hashed_password: str
 
     def verify_password(self, plain_password):
-        return pwd_context.verify(plain_password, self.hashed_password)
+        return verify_password(plain_password, self.hashed_password)
 
 
 class AdminValidationResult(BaseModel):

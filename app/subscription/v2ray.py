@@ -22,6 +22,19 @@ from config import (
 )
 
 
+def _with_tls_verification(link: str, inbound: dict) -> str:
+    """Add the pcs / vcn share-link parameters (pinnedPeerCertSha256 /
+    verifyPeerCertByName) to VLESS and Trojan TLS links."""
+    if inbound.get("tls") != "tls" or not link.startswith(("vless://", "trojan://")):
+        return link
+    params = {k: inbound[k] for k in ("pcs", "vcn") if inbound.get(k)}
+    if not params:
+        return link
+    base, sep, fragment = link.partition("#")
+    joiner = "&" if "?" in base else "?"
+    return base + joiner + urlparse.urlencode(params, quote_via=urlparse.quote) + sep + fragment
+
+
 class V2rayShareLink(str):
     def __init__(self):
         self.links = []
@@ -158,7 +171,7 @@ class V2rayShareLink(str):
         else:
             return
 
-        self.add_link(link=link)
+        self.add_link(link=_with_tls_verification(link, inbound))
 
     @classmethod
     def vmess(
@@ -326,7 +339,9 @@ class V2rayShareLink(str):
                 extra["keepAlivePeriod"] = keepAlivePeriod
             if xmux:
                 extra["xmux"] = xmux
-            payload["extra"] = json.dumps(extra)
+            # compact JSON: urlencode turns spaces into '+', which clients
+            # then fail to parse as JSON
+            payload["extra"] = json.dumps(extra, separators=(',', ':'))
 
         elif net == 'kcp':
             payload['seed'] = path
@@ -430,7 +445,9 @@ class V2rayShareLink(str):
                 extra["keepAlivePeriod"] = keepAlivePeriod
             if xmux:
                 extra["xmux"] = xmux
-            payload["extra"] = json.dumps(extra)
+            # compact JSON: urlencode turns spaces into '+', which clients
+            # then fail to parse as JSON
+            payload["extra"] = json.dumps(extra, separators=(',', ':'))
 
         elif net == 'quic':
             payload['key'] = path
@@ -530,7 +547,10 @@ class V2rayJsonConfig(str):
         if sni is not None:
             tlsSettings["serverName"] = sni
 
-        tlsSettings['allowInsecure'] = ais if ais else False
+        # Only when enabled: xray-core removed allowInsecure (use pinnedPeerCertSha256)
+        # and newer cores reject configs that contain it at all.
+        if ais:
+            tlsSettings['allowInsecure'] = True
 
         if fp:
             tlsSettings["fingerprint"] = fp
@@ -611,6 +631,7 @@ class V2rayJsonConfig(str):
         if host:
             config["host"] = host
         if random_user_agent:
+            config.setdefault("headers", {})
             config["headers"]["User-Agent"] = choice(
                 self.user_agent_list)
         config.setdefault("scMaxEachPostBytes", sc_max_each_post_bytes)
@@ -720,6 +741,7 @@ class V2rayJsonConfig(str):
         else:
             config["host"] = []
         if random_user_agent:
+            config.setdefault("headers", {})
             config["headers"]["User-Agent"] = [
                 choice(self.user_agent_list)]
 
@@ -1071,6 +1093,15 @@ class V2rayJsonConfig(str):
             heartbeatPeriod=inbound.get("heartbeatPeriod", 0),
             keepAlivePeriod=inbound.get("keepAlivePeriod", 0),
         )
+
+        # TLS certificate pinning (replaces allowInsecure)
+        stream = outbound.get("streamSettings") or {}
+        if stream.get("security") == "tls" and (inbound.get("pcs") or inbound.get("vcn")):
+            tls_settings = stream.setdefault("tlsSettings", {})
+            if inbound.get("pcs"):
+                tls_settings["pinnedPeerCertSha256"] = inbound["pcs"]
+            if inbound.get("vcn"):
+                tls_settings["verifyPeerCertByName"] = inbound["vcn"]
 
         mux_json = json.loads(self.mux_template)
         mux_config = mux_json["v2ray"]

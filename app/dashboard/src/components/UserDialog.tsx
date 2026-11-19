@@ -43,7 +43,13 @@ import dayjs from "dayjs";
 import { FC, useEffect, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 import ReactDatePicker from "react-datepicker";
-import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
+import {
+  Controller,
+  FormProvider,
+  Resolver,
+  useForm,
+  useWatch,
+} from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
   ProxyKeys,
@@ -59,6 +65,9 @@ import { Icon } from "./Icon";
 import { Input } from "./Input";
 import { RadioGroup } from "./RadioGroup";
 import { UsageFilter, createUsageConfig } from "./UsageFilter";
+import { TemplatePicker } from "./TemplatesModal";
+import { UserExtras } from "./UserExtras";
+import { UserTemplate } from "types/Management";
 import { ReloadIcon } from "./Filters";
 import classNames from "classnames";
 
@@ -229,7 +238,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>("");
   const toast = useToast();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
   const { colorMode } = useColorMode();
 
@@ -240,7 +249,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
   const form = useForm<FormType>({
     defaultValues: getDefaultValues(),
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as unknown as Resolver<FormType>,
   });
 
   useEffect(
@@ -283,6 +292,32 @@ export const UserDialog: FC<UserDialogProps> = () => {
       });
     }
   }, [editingUser]);
+
+  const applyTemplate = (template: UserTemplate) => {
+    const options = { shouldDirty: true };
+    form.setValue(
+      "data_limit",
+      template.data_limit ? Number((template.data_limit / 1073741824).toFixed(5)) : null,
+      options
+    );
+    form.setValue(
+      "expire",
+      template.expire_duration ? dayjs().add(template.expire_duration, "second").unix() : null,
+      options
+    );
+    if (template.inbounds && Object.keys(template.inbounds).length) {
+      form.setValue("inbounds", template.inbounds, options);
+      form.setValue("selected_proxies", Object.keys(template.inbounds) as ProxyKeys, options);
+    }
+    if (template.username_prefix || template.username_suffix) {
+      const username = form.getValues("username") || "";
+      form.setValue(
+        "username",
+        `${template.username_prefix || ""}${username}${template.username_suffix || ""}`,
+        options
+      );
+    }
+  };
 
   const submit = (values: FormType) => {
     setLoading(true);
@@ -403,6 +438,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
             </ModalHeader>
             <ModalCloseButton mt={3} disabled={disabled} />
             <ModalBody>
+              {!isEditing && <TemplatePicker onApply={applyTemplate} />}
               <Grid
                 templateColumns={{
                   base: "repeat(1, 1fr)",
@@ -637,7 +673,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
                               return (
                                 <>
                                   <ReactDatePicker
-                                    locale={i18n.language.toLocaleLowerCase()}
                                     dateFormat={t("dateFormat")}
                                     minDate={new Date()}
                                     selected={
@@ -781,6 +816,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
                         />
                       </Box>
                     </VStack>
+                  </GridItem>
+                )}
+                {isEditing && editingUser && (
+                  <GridItem pt={6} colSpan={{ base: 1, md: 2 }}>
+                    <UserExtras user={editingUser} />
                   </GridItem>
                 )}
               </Grid>

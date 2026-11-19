@@ -124,6 +124,10 @@ class User(BaseModel):
 class UserCreate(User):
     username: str
     status: UserStatusCreate = None
+    # validate_default: when "inbounds" is omitted, validate_inbounds must still
+    # run to enable every inbound of the selected protocols. Without it Pydantic v2
+    # skips the validator and the user ends up with all inbounds excluded.
+    inbounds: Dict[ProxyTypes, List[str]] = Field(default_factory=dict, validate_default=True)
     model_config = ConfigDict(json_schema_extra={
         "example": {
             "username": "user1234",
@@ -287,6 +291,7 @@ class UserResponse(User):
     created_at: datetime
     links: List[str] = []
     subscription_url: str = ""
+    sub_revoked_at: Optional[datetime] = Field(None, exclude=True)
     proxies: dict
     excluded_inbounds: Dict[ProxyTypes, List[str]] = {}
 
@@ -306,7 +311,9 @@ class UserResponse(User):
         if not self.subscription_url:
             salt = secrets.token_hex(8)
             url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace('*', salt)
-            token = create_subscription_token(self.username)
+            # Stable link: derived from creation / last revocation, not "now"
+            issued_at = max(t for t in (self.created_at, self.sub_revoked_at) if t)
+            token = create_subscription_token(self.username, issued_at)
             self.subscription_url = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{token}"
         return self
 
@@ -364,3 +371,36 @@ class UserUsagesResponse(BaseModel):
 
 class UsersUsagesResponse(BaseModel):
     usages: List[UserUsageResponse]
+
+
+class UsersBulkActionType(str, Enum):
+    disable = "disable"
+    enable = "enable"
+    delete = "delete"
+    reset_usage = "reset_usage"
+    revoke_sub = "revoke_sub"
+    extend = "extend"          # add `days` to the expiry date
+    add_data = "add_data"      # add `data_limit` bytes to the data limit
+
+
+class UsersBulkAction(BaseModel):
+    usernames: List[str] = Field(min_length=1, max_length=1000)
+    action: UsersBulkActionType
+    days: Optional[int] = Field(None, gt=0, le=3650)
+    data_limit: Optional[int] = Field(None, gt=0)
+
+
+class UsersBulkResult(BaseModel):
+    done: List[str] = []
+    skipped: Dict[str, str] = {}  # username -> reason
+
+
+class UserResetLog(BaseModel):
+    used_traffic_at_reset: int
+    reset_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DailyUsage(BaseModel):
+    date: str  # YYYY-MM-DD (UTC)
+    used_traffic: int

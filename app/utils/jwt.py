@@ -1,3 +1,5 @@
+import calendar
+import hmac
 import time
 import jwt
 from base64 import b64decode, b64encode
@@ -5,10 +7,11 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 from hashlib import sha256
 from math import ceil
-from typing import Union
+from typing import Optional, Union
 
 
-from config import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+from config import SUDOERS
+from app.settings import settings as runtime_settings
 
 
 @lru_cache(maxsize=None)
@@ -18,10 +21,24 @@ def get_secret_key():
         return get_jwt_secret_key(db)
 
 
+def sudoer_password_fingerprint(username: str) -> Optional[str]:
+    """HMAC of an env-configured sudo admin's password.
+
+    Embedded in their tokens so changing SUDO_PASSWORD revokes existing tokens
+    (database admins get the same effect from password_reset_at).
+    """
+    password = SUDOERS.get(username)
+    if password is None:
+        return None
+    return hmac.new(get_secret_key().encode(), f"{username}:{password}".encode(), sha256).hexdigest()[:32]
+
+
 def create_admin_token(username: str, is_sudo=False) -> str:
     data = {"sub": username, "access": "sudo" if is_sudo else "admin", "iat": datetime.utcnow()}
-    if JWT_ACCESS_TOKEN_EXPIRE_MINUTES > 0:
-        expire = datetime.utcnow() + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+    if is_sudo and (fingerprint := sudoer_password_fingerprint(username)):
+        data["spf"] = fingerprint
+    if runtime_settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES > 0:
+        expire = datetime.utcnow() + timedelta(minutes=runtime_settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
         data["exp"] = expire
     encoded_jwt = jwt.encode(data, get_secret_key(), algorithm="HS256")
     return encoded_jwt
@@ -39,13 +56,24 @@ def get_admin_payload(token: str) -> Union[dict, None]:
         except KeyError:
             created_at = None
 
-        return {"username": username, "is_sudo": access == "sudo", "created_at": created_at}
+        return {"username": username, "is_sudo": access == "sudo", "created_at": created_at,
+                "sudo_fingerprint": payload.get("spf")}
     except jwt.exceptions.PyJWTError:
         return
 
 
-def create_subscription_token(username: str) -> str:
-    data = username + ',' + str(ceil(time.time()))
+def create_subscription_token(username: str, issued_at: Optional[datetime] = None) -> str:
+    """Build a subscription token.
+
+    `issued_at` (UTC) makes the token deterministic, so a user's link stays the
+    same across page refreshes and restarts. It is rounded up to the next second
+    so it never predates the user's creation / last revocation.
+    """
+    if issued_at is None:
+        timestamp = ceil(time.time())
+    else:
+        timestamp = calendar.timegm(issued_at.utctimetuple()) + (1 if issued_at.microsecond else 0)
+    data = username + ',' + str(timestamp)
     data_b64_str = b64encode(data.encode('utf-8'), altchars=b'-_').decode('utf-8').rstrip('=')
     data_b64_sign = b64encode(
         sha256(

@@ -155,7 +155,28 @@ class ProxyHost(BaseModel):
     noise_setting: Optional[str] = Field(None, nullable=True)
     random_user_agent: Union[bool, None] = None
     use_sni_as_host: Union[bool, None] = None
+    pinned_peer_cert_sha256: Optional[str] = Field(None, nullable=True)
+    verify_peer_cert_by_name: Optional[str] = Field(None, nullable=True)
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("pinned_peer_cert_sha256", mode="after")
+    def validate_pinned_peer_cert_sha256(cls, v):
+        """Comma-separated SHA-256 certificate hashes, stored as plain lowercase
+        hex (the colon-separated form `openssl x509 -fingerprint` prints is accepted)."""
+        if not v:
+            return None
+        hashes = [h.strip().replace(":", "").lower() for h in v.split(",") if h.strip()]
+        for h in hashes:
+            if len(h) != 64 or any(c not in "0123456789abcdef" for c in h):
+                raise ValueError("pinned certificate must be SHA-256 hex hashes, separated by commas")
+        return ",".join(hashes) or None
+
+    @field_validator("verify_peer_cert_by_name", mode="after")
+    def validate_verify_peer_cert_by_name(cls, v):
+        if not v:
+            return None
+        names = [n.strip() for n in v.split(",") if n.strip()]
+        return ",".join(names) or None
 
     @field_validator("remark", mode="after")
     def validate_remark(cls, v):

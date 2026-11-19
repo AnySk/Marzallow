@@ -1,3 +1,7 @@
+import urllib3
+import certifi
+import json
+import time
 from datetime import datetime as dt
 from datetime import timedelta as td
 from typing import Any, Dict, List
@@ -5,22 +9,24 @@ from typing import Any, Dict, List
 from fastapi.encoders import jsonable_encoder
 from requests import Session
 
-from app import app, logger, scheduler
+from app import logger, on_shutdown, scheduler
 from app.db import GetDB
 from app.db.models import NotificationReminder
 from app.utils.notification import queue
-from config import (JOB_SEND_NOTIFICATIONS_INTERVAL,
-                    NUMBER_OF_RECURRENT_NOTIFICATIONS,
-                    RECURRENT_NOTIFICATIONS_TIMEOUT, WEBHOOK_ADDRESS,
-                    WEBHOOK_SECRET)
+from config import JOB_SEND_NOTIFICATIONS_INTERVAL
+from app.settings import check_public_url, settings as runtime_settings
 
 session = Session()
 
-headers = {"x-webhook-secret": WEBHOOK_SECRET} if WEBHOOK_SECRET else None
+
+
+def _headers():
+    # read on every send: the secret can be changed from the dashboard
+    return {"x-webhook-secret": runtime_settings.WEBHOOK_SECRET} if runtime_settings.WEBHOOK_SECRET else None
 
 
 def send(data: List[Dict[Any, Any]]) -> bool:
-    """Send the notification to the webhook address provided by WEBHOOK_ADDRESS
+    """Send the notification to the webhook address provided by runtime_settings.WEBHOOK_ADDRESS
 
     Args:
         data (List[Dict[Any, Any]]): list of json encoded notifications
@@ -30,7 +36,7 @@ def send(data: List[Dict[Any, Any]]) -> bool:
     """
 
     result_list = []
-    for webhook in WEBHOOK_ADDRESS:
+    for webhook in runtime_settings.WEBHOOK_ADDRESS:
         result = send_req(w_address=webhook, data=data)
         result_list.append(result)
     if True in result_list:
@@ -42,7 +48,10 @@ def send(data: List[Dict[Any, Any]]) -> bool:
 def send_req(w_address: str, data):
     try:
         logger.debug(f"Sending {len(data)} webhook updates to {w_address}")
-        r = session.post(w_address, json=data, headers=headers)
+        if runtime_settings.is_overridden("WEBHOOK_ADDRESS"):
+            return _send_pinned(check_public_url(w_address), data)
+        # configured in .env by the operator (may be a local receiver)
+        r = session.post(w_address, json=data, headers=_headers(), allow_redirects=False, timeout=10)
         if r.ok:
             return True
         logger.error(r)
@@ -51,16 +60,37 @@ def send_req(w_address: str, data):
     return False
 
 
+def _send_pinned(url, data) -> bool:
+    """POST to a dashboard-set webhook at the exact IP that was validated as
+    public, so a DNS change between the check and the request can't redirect
+    it to an internal address. TLS still uses and verifies the real hostname."""
+    headers = {"Host": url.host if url.port in (80, 443) else f"{url.host}:{url.port}",
+               "Content-Type": "application/json", **(_headers() or {})}
+    if url.scheme == "https":
+        pool = urllib3.HTTPSConnectionPool(
+            url.addresses[0], url.port, server_hostname=url.host, assert_hostname=url.host,
+            cert_reqs="CERT_REQUIRED", ca_certs=certifi.where(), timeout=10, retries=False)
+    else:
+        pool = urllib3.HTTPConnectionPool(url.addresses[0], url.port, timeout=10, retries=False)
+    with pool:
+        r = pool.urlopen("POST", url.request_target, body=json.dumps(data).encode(),
+                         headers=headers, redirect=False)
+    if 200 <= r.status < 300:
+        return True
+    logger.error(f"Webhook {url.host} responded with {r.status}")
+    return False
+
+
 def send_notifications():
-    if not queue:
+    if not queue or not runtime_settings.WEBHOOK_ADDRESS:
         return
 
     notifications_to_send = list()
     try:
         while (notification := queue.popleft()):
-            if (notification.tries > NUMBER_OF_RECURRENT_NOTIFICATIONS):
+            if (notification.tries > runtime_settings.NUMBER_OF_RECURRENT_NOTIFICATIONS):
                 continue
-            if notification.send_at > dt.utcnow().timestamp():
+            if notification.send_at > time.time():
                 queue.append(notification)  # add it to the queue again for the next check
                 continue
             notifications_to_send.append(notification)
@@ -71,11 +101,10 @@ def send_notifications():
         return
     if not send([jsonable_encoder(notif) for notif in notifications_to_send]):
         for notification in notifications_to_send:
-            if (notification.tries + 1) > NUMBER_OF_RECURRENT_NOTIFICATIONS:
+            if (notification.tries + 1) > runtime_settings.NUMBER_OF_RECURRENT_NOTIFICATIONS:
                 continue
             notification.tries += 1
-            notification.send_at = (  # schedule notification for n seconds later
-                dt.utcnow() + td(seconds=RECURRENT_NOTIFICATIONS_TIMEOUT)).timestamp()
+            notification.send_at = time.time() + runtime_settings.RECURRENT_NOTIFICATIONS_TIMEOUT  # retry later
             queue.append(notification)
 
 
@@ -85,14 +114,16 @@ def delete_expired_reminders() -> None:
         db.commit()
 
 
-if WEBHOOK_ADDRESS:
-    @app.on_event("shutdown")
-    def app_shutdown():
+# Always scheduled: the webhook address can be set from the dashboard at any
+# time; send_notifications() does nothing while it's empty.
+@on_shutdown
+def app_shutdown():
+    if queue and runtime_settings.WEBHOOK_ADDRESS:
         logger.info("Sending pending notifications before shutdown...")
         send_notifications()
 
-    logger.info("Send webhook job started")
-    scheduler.add_job(send_notifications, "interval",
-                      seconds=JOB_SEND_NOTIFICATIONS_INTERVAL,
-                      replace_existing=True)
-    scheduler.add_job(delete_expired_reminders, "interval", hours=2, start_date=dt.utcnow() + td(minutes=1))
+
+scheduler.add_job(send_notifications, "interval",
+                  seconds=JOB_SEND_NOTIFICATIONS_INTERVAL,
+                  replace_existing=True)
+scheduler.add_job(delete_expired_reminders, "interval", hours=2, start_date=dt.utcnow() + td(minutes=1))

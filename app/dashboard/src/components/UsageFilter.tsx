@@ -77,7 +77,7 @@ export const UsageFilter: FC<UsageFilterProps> = ({
   defaultValue,
   ...props
 }) => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { colorMode } = useColorMode();
 
   const filterOptions = useBreakpointValue({
@@ -288,7 +288,6 @@ export const UsageFilter: FC<UsageFilterProps> = ({
             <TabPanel className="datepicker-panel">
               <VStack>
                 <ReactDatePicker
-                  locale={i18n.language.toLocaleLowerCase()}
                   selected={startDate}
                   onChange={onDateChange}
                   startDate={startDate}

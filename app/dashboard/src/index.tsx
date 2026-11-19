@@ -1,3 +1,9 @@
+// Inter is bundled (not loaded from Google Fonts, which is blocked in some regions)
+import "@fontsource/inter/300.css";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/600.css";
+import "@fontsource/inter/700.css";
 import { ChakraProvider, localStorageManager } from "@chakra-ui/react";
 import dayjs from "dayjs";
 import Duration from "dayjs/plugin/duration";
@@ -8,7 +14,7 @@ import utc from "dayjs/plugin/utc";
 import "locales/i18n";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { QueryClientProvider } from "react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "utils/react-query";
 import { updateThemeColor } from "utils/themeColor";
 import { theme } from "../chakra.config";

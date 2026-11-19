@@ -32,9 +32,11 @@ def reset_user_data_usage():
             if not (now - last_reset_time).days >= num_days_to_reset:
                 continue
 
+            # read before resetting: reset_user_data_usage switches limited users
+            # to active, and they must then be added back to xray
+            was_limited = user.status == UserStatus.limited
             crud.reset_user_data_usage(db, user)
-            # make user active if limited on usage reset
-            if user.status == UserStatus.limited:
+            if was_limited:
                 xray.operations.add_user(user)
 
             logger.info(f"User data usage reset for User \"{user.username}\"")

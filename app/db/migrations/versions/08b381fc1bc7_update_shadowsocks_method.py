@@ -22,8 +22,16 @@ proxies_table = sa.Table(
     sa.MetaData(),
     sa.Column('id', sa.Integer, primary_key=True),
     sa.Column('type', sa.String),
-    sa.Column('settings', sa.Text),
+    sa.Column('settings', sa.JSON),  # matches the real column (JSON on all dialects)
 )
+
+# `type` is an enum; cast it so the comparison also works on PostgreSQL,
+# which has no enum = varchar operator.
+IS_SHADOWSOCKS = sa.cast(proxies_table.c.type, sa.String) == 'Shadowsocks'
+
+
+def _settings(value):
+    return json.loads(value) if isinstance(value, str) else dict(value)
 
 
 def upgrade() -> None:
@@ -31,12 +39,12 @@ def upgrade() -> None:
 
     # Select proxies where type = 'Shadowsocks'
     stmt = sa.select(proxies_table.c.id, proxies_table.c.settings).where(
-        proxies_table.c.type == 'Shadowsocks'
+        IS_SHADOWSOCKS
     )
     result = connection.execute(stmt)
 
     for pid, settings in result:
-        settings = json.loads(settings)
+        settings = _settings(settings)
         if settings.get('method') == 'chacha20-poly1305':
             new_settings = settings.copy()
             new_settings['method'] = 'chacha20-ietf-poly1305'
@@ -45,7 +53,7 @@ def upgrade() -> None:
             update_stmt = (
                 sa.update(proxies_table)
                 .where(proxies_table.c.id == pid)
-                .values(settings=json.dumps(new_settings))
+                .values(settings=new_settings)
             )
             connection.execute(update_stmt)
 
@@ -55,12 +63,12 @@ def downgrade() -> None:
 
     # Select proxies where type = 'Shadowsocks'
     stmt = sa.select(proxies_table.c.id, proxies_table.c.settings).where(
-        proxies_table.c.type == 'Shadowsocks'
+        IS_SHADOWSOCKS
     )
     result = connection.execute(stmt)
 
     for pid, settings in result:
-        settings = json.loads(settings)
+        settings = _settings(settings)
         if settings.get('method') == 'chacha20-ietf-poly1305':
             new_settings = settings.copy()
             new_settings['method'] = 'chacha20-poly1305'
@@ -69,6 +77,6 @@ def downgrade() -> None:
             update_stmt = (
                 sa.update(proxies_table)
                 .where(proxies_table.c.id == pid)
-                .values(settings=json.dumps(new_settings))
+                .values(settings=new_settings)
             )
             connection.execute(update_stmt)

@@ -1,0 +1,5607 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "xray-config-v26.10.31",
+  "title": "Xray-core configuration",
+  "description": "Xray-core v26.10.31 JSON config (from infra/conf). Keys are matched case-insensitively by the core.",
+  "type": "object",
+  "x-docs": "https://xtls.github.io/en/config/",
+  "properties": {
+    "log": {
+      "$ref": "#/definitions/Log"
+    },
+    "api": {
+      "$ref": "#/definitions/Api"
+    },
+    "dns": {
+      "$ref": "#/definitions/Dns"
+    },
+    "routing": {
+      "$ref": "#/definitions/Routing"
+    },
+    "policy": {
+      "$ref": "#/definitions/Policy"
+    },
+    "inbounds": {
+      "type": "array",
+      "description": "Inbounds (listeners).",
+      "items": {
+        "$ref": "#/definitions/Inbound"
+      },
+      "x-docs": "https://xtls.github.io/en/config/inbound.html"
+    },
+    "outbounds": {
+      "type": "array",
+      "description": "Outbounds; the first one is the default route.",
+      "items": {
+        "$ref": "#/definitions/Outbound"
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbound.html"
+    },
+    "transport": {
+      "type": "object",
+      "description": "Removed: global transport config is rejected; use streamSettings in each inbound/outbound.",
+      "deprecated": true
+    },
+    "stats": {
+      "$ref": "#/definitions/Stats"
+    },
+    "reverse": {
+      "$ref": "#/definitions/Reverse"
+    },
+    "fakeDns": {
+      "$ref": "#/definitions/FakeDns"
+    },
+    "fakedns": {
+      "$ref": "#/definitions/FakeDns",
+      "description": "Same as fakeDns (the documented spelling; keys are case-insensitive)."
+    },
+    "metrics": {
+      "$ref": "#/definitions/Metrics"
+    },
+    "observatory": {
+      "$ref": "#/definitions/Observatory"
+    },
+    "burstObservatory": {
+      "$ref": "#/definitions/BurstObservatory"
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment variables set before the config is built.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "version": {
+      "$ref": "#/definitions/Version"
+    },
+    "geodata": {
+      "$ref": "#/definitions/Geodata"
+    }
+  },
+  "definitions": {
+    "Api": {
+      "type": "object",
+      "description": "Remote control gRPC API.",
+      "properties": {
+        "tag": {
+          "type": "string",
+          "description": "Outbound tag of the API; route an inbound to it to expose the gRPC API.",
+          "examples": [
+            "API"
+          ]
+        },
+        "listen": {
+          "type": "string",
+          "description": "Listen address for the API directly (no routing needed).",
+          "examples": [
+            "127.0.0.1:8080"
+          ]
+        },
+        "services": {
+          "type": "array",
+          "description": "gRPC services to enable (case-insensitive).",
+          "items": {
+            "type": "string",
+            "enum": [
+              "HandlerService",
+              "LoggerService",
+              "StatsService",
+              "RoutingService",
+              "ObservatoryService",
+              "ReflectionService"
+            ]
+          }
+        }
+      },
+      "required": [
+        "tag"
+      ],
+      "x-docs": "https://xtls.github.io/en/config/api.html"
+    },
+    "Balancer": {
+      "type": "object",
+      "description": "Load balancer over several outbounds.",
+      "properties": {
+        "tag": {
+          "type": "string",
+          "description": "Balancer tag, referenced by rules' balancerTag."
+        },
+        "selector": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Outbound tag prefixes to balance over.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fallbackTag": {
+          "type": "string",
+          "description": "Outbound used when no selected outbound is healthy."
+        },
+        "strategy": {
+          "type": "object",
+          "description": "Balancing strategy.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Strategy (case-insensitive). leastPing needs observatory; leastLoad needs burstObservatory.",
+              "enum": [
+                "random",
+                "roundRobin",
+                "leastPing",
+                "leastLoad"
+              ],
+              "default": "random"
+            }
+          },
+          "x-switch": [
+            {
+              "property": "settings",
+              "on": "type",
+              "cases": {
+                "leastLoad": {
+                  "$ref": "#/definitions/LeastLoadSettings"
+                },
+                "leastload": {
+                  "$ref": "#/definitions/LeastLoadSettings"
+                },
+                "random": {
+                  "type": "object",
+                  "description": "No settings.",
+                  "properties": {}
+                },
+                "roundRobin": {
+                  "type": "object",
+                  "description": "No settings.",
+                  "properties": {}
+                },
+                "leastPing": {
+                  "type": "object",
+                  "description": "No settings.",
+                  "properties": {}
+                }
+              }
+            }
+          ]
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/routing.html#balancerobject"
+    },
+    "BlackholeSettings": {
+      "type": "object",
+      "description": "Blackhole (block) outbound settings.",
+      "properties": {
+        "response": {
+          "type": "object",
+          "description": "Response.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Response sent before closing.",
+              "enum": [
+                "none",
+                "http",
+                "custom"
+              ],
+              "default": "none"
+            },
+            "customResponseData": {
+              "type": "string",
+              "description": "Base64 response bytes (type custom).",
+              "x-show-if": {
+                "type": [
+                  "custom"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbounds/blackhole.html"
+    },
+    "BurstObservatory": {
+      "type": "object",
+      "description": "Burst observatory (for leastLoad balancers).",
+      "properties": {
+        "subjectSelector": {
+          "type": "array",
+          "description": "Outbound tag prefixes to probe.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pingConfig": {
+          "type": "object",
+          "description": "Health-check settings (required).",
+          "properties": {
+            "destination": {
+              "type": "string",
+              "description": "URL to probe.",
+              "examples": [
+                "https://connectivitycheck.gstatic.com/generate_204"
+              ]
+            },
+            "connectivity": {
+              "type": "string",
+              "description": "URL used to check local connectivity; empty skips the check."
+            },
+            "interval": {
+              "$ref": "#/definitions/Duration",
+              "description": "Probe interval per outbound."
+            },
+            "sampling": {
+              "type": "integer",
+              "description": "Number of recent results kept."
+            },
+            "timeout": {
+              "$ref": "#/definitions/Duration",
+              "description": "Probe timeout."
+            },
+            "httpMethod": {
+              "type": "string",
+              "description": "HTTP method of the probe.",
+              "default": "HEAD",
+              "examples": [
+                "HEAD",
+                "GET"
+              ]
+            }
+          }
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/observatory.html"
+    },
+    "Certificate": {
+      "type": "object",
+      "description": "A TLS certificate.",
+      "properties": {
+        "certificateFile": {
+          "type": "string",
+          "description": "Certificate file path (PEM).",
+          "examples": [
+            "/var/lib/marzban/certs/fullchain.pem"
+          ]
+        },
+        "keyFile": {
+          "type": "string",
+          "description": "Private key file path (PEM).",
+          "examples": [
+            "/var/lib/marzban/certs/key.pem"
+          ]
+        },
+        "certificate": {
+          "type": "array",
+          "description": "Inline certificate lines (instead of certificateFile).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "key": {
+          "type": "array",
+          "description": "Inline key lines (instead of keyFile).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "usage": {
+          "type": "string",
+          "description": "Certificate usage.",
+          "enum": [
+            "encipherment",
+            "verify",
+            "issue"
+          ],
+          "default": "encipherment"
+        },
+        "ocspStapling": {
+          "type": "integer",
+          "description": "OCSP stapling refresh interval in seconds (0 = off)."
+        },
+        "oneTimeLoading": {
+          "type": "boolean",
+          "description": "Load files only once (no hot reload)."
+        },
+        "buildChain": {
+          "type": "boolean",
+          "description": "Build the full chain when issuing (usage issue)."
+        }
+      }
+    },
+    "CustomTcpItem": {
+      "type": "object",
+      "description": "Custom header item.",
+      "properties": {
+        "delay": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Delay before sending, ms."
+        },
+        "rand": {
+          "type": "integer",
+          "description": "Number of random bytes."
+        },
+        "randRange": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Random byte value range (0-255)."
+        },
+        "type": {
+          "type": "string",
+          "description": "Encoding of packet.",
+          "enum": [
+            "array",
+            "str",
+            "hex",
+            "base64"
+          ],
+          "default": "array"
+        },
+        "packet": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Packet bytes."
+        },
+        "capture": {
+          "type": "string",
+          "description": "Capture into this variable."
+        },
+        "reuse": {
+          "type": "string",
+          "description": "Reuse a captured variable."
+        },
+        "transform": {
+          "$ref": "#/definitions/CustomTransform"
+        }
+      }
+    },
+    "CustomTransform": {
+      "type": "object",
+      "description": "Byte transform.",
+      "properties": {
+        "op": {
+          "type": "string",
+          "description": "Transform operation."
+        },
+        "args": {
+          "type": "array",
+          "description": "Arguments.",
+          "items": {
+            "type": "object",
+            "description": "Transform argument (exactly one value).",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Argument encoding.",
+                "enum": [
+                  "array",
+                  "str",
+                  "hex",
+                  "base64"
+                ]
+              },
+              "bytes": {
+                "type": [
+                  "array",
+                  "string"
+                ],
+                "description": "Literal bytes."
+              },
+              "u64": {
+                "type": "integer",
+                "description": "Literal integer."
+              },
+              "reuse": {
+                "type": "string",
+                "description": "Captured variable name."
+              },
+              "metadata": {
+                "type": "string",
+                "description": "Metadata field."
+              },
+              "transform": {
+                "$ref": "#/definitions/CustomTransform"
+              }
+            }
+          }
+        }
+      }
+    },
+    "CustomUdpItem": {
+      "type": "object",
+      "description": "Custom header item.",
+      "properties": {
+        "rand": {
+          "type": "integer",
+          "description": "Number of random bytes."
+        },
+        "randRange": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Random byte value range (0-255)."
+        },
+        "type": {
+          "type": "string",
+          "description": "Encoding of packet.",
+          "enum": [
+            "array",
+            "str",
+            "hex",
+            "base64"
+          ],
+          "default": "array"
+        },
+        "packet": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Packet bytes."
+        },
+        "capture": {
+          "type": "string",
+          "description": "Capture into this variable."
+        },
+        "reuse": {
+          "type": "string",
+          "description": "Reuse a captured variable."
+        },
+        "transform": {
+          "$ref": "#/definitions/CustomTransform"
+        }
+      }
+    },
+    "Dns": {
+      "type": "object",
+      "description": "Built-in DNS resolver.",
+      "properties": {
+        "servers": {
+          "type": "array",
+          "description": "DNS servers, queried in order with domain-based preference.",
+          "items": {
+            "$ref": "#/definitions/DnsServer"
+          }
+        },
+        "hosts": {
+          "type": "object",
+          "description": "Static hosts: keys are domains (domain rule syntax, e.g. \"domain:\", \"geosite:\").",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "IP, list of IPs, or a domain to redirect to."
+          },
+          "examples": [
+            {
+              "dns.google": "8.8.8.8",
+              "domain:example.com": [
+                "1.2.3.4"
+              ]
+            }
+          ]
+        },
+        "clientIp": {
+          "type": "string",
+          "description": "EDNS Client Subnet IP."
+        },
+        "tag": {
+          "type": "string",
+          "description": "Inbound tag given to DNS queries for routing.",
+          "examples": [
+            "dns_inbound"
+          ]
+        },
+        "queryStrategy": {
+          "$ref": "#/definitions/QueryStrategy"
+        },
+        "disableCache": {
+          "type": "boolean",
+          "description": "Disable the DNS cache."
+        },
+        "serveStale": {
+          "type": "boolean",
+          "description": "Serve expired cache entries while refreshing."
+        },
+        "serveExpiredTTL": {
+          "type": "integer",
+          "description": "Max seconds an expired entry may be served."
+        },
+        "disableFallback": {
+          "type": "boolean",
+          "description": "Do not fall back to other servers."
+        },
+        "disableFallbackIfMatch": {
+          "type": "boolean",
+          "description": "Do not fall back when a server's domains matched."
+        },
+        "enableParallelQuery": {
+          "type": "boolean",
+          "description": "Query servers in parallel."
+        },
+        "useSystemHosts": {
+          "type": "boolean",
+          "description": "Also load the OS hosts file."
+        },
+        "script": {
+          "type": "string",
+          "description": "DNS script (cannot be combined with fallback options)."
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/dns.html"
+    },
+    "DnsOutboundSettings": {
+      "type": "object",
+      "description": "DNS outbound settings.",
+      "properties": {
+        "network": {
+          "type": "string",
+          "description": "Rewrite the DNS transport.",
+          "enum": [
+            "tcp",
+            "udp"
+          ]
+        },
+        "address": {
+          "type": "string",
+          "description": "Rewrite the DNS server address."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Rewrite the DNS server port."
+        },
+        "rewriteNetwork": {
+          "type": "string",
+          "description": "Same as network.",
+          "enum": [
+            "tcp",
+            "udp"
+          ]
+        },
+        "rewriteAddress": {
+          "type": "string",
+          "description": "Same as address."
+        },
+        "rewritePort": {
+          "type": "integer",
+          "description": "Same as port."
+        },
+        "userLevel": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "rules": {
+          "type": "array",
+          "description": "DNS handling rules.",
+          "items": {
+            "type": "object",
+            "description": "DNS rule.",
+            "properties": {
+              "action": {
+                "type": "string",
+                "description": "Action.",
+                "enum": [
+                  "direct",
+                  "drop",
+                  "return",
+                  "hijack"
+                ]
+              },
+              "qType": {
+                "$ref": "#/definitions/PortList",
+                "description": "Query types (numbers or ranges, e.g. \"1,28\")."
+              },
+              "domain": {
+                "type": [
+                  "array",
+                  "string"
+                ],
+                "description": "Domains (domain rule syntax).",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rCode": {
+                "type": "integer",
+                "description": "Response code for return (0-65535)."
+              }
+            }
+          }
+        },
+        "nonIPQuery": {
+          "type": "string",
+          "description": "Legacy; use rules.",
+          "enum": [
+            "reject",
+            "drop",
+            "skip"
+          ],
+          "deprecated": true
+        },
+        "blockTypes": {
+          "type": "array",
+          "description": "Legacy; use rules.",
+          "items": {
+            "type": "integer"
+          },
+          "deprecated": true
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbounds/dns.html"
+    },
+    "DnsServer": {
+      "type": [
+        "string",
+        "object"
+      ],
+      "description": "A DNS server: an address string, or an object with per-server options.",
+      "examples": [
+        "1.1.1.1",
+        "https://1.1.1.1/dns-query",
+        "localhost",
+        "fakedns"
+      ],
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Server address: IP, \"localhost\", \"fakedns\", or a URL (tcp://, tcp+local://, https://, https+local://, h2c://, quic+local://).",
+          "examples": [
+            "8.8.8.8",
+            "https://dns.google/dns-query",
+            "tcp://1.1.1.1",
+            "quic+local://dns.adguard.com"
+          ]
+        },
+        "port": {
+          "type": "integer",
+          "description": "Server port (UDP/TCP default 53)."
+        },
+        "domains": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Domains this server is preferred for (domain rule syntax).",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "geosite:google",
+              "domain:example.com"
+            ]
+          ]
+        },
+        "expectedIPs": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Only accept answers in these IPs/CIDRs/geoip; \"*\" keeps others as fallback.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expectIPs": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Alias of expectedIPs (prefer expectedIPs).",
+          "items": {
+            "type": "string"
+          },
+          "deprecated": true
+        },
+        "unexpectedIPs": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Reject answers in these IPs/CIDRs/geoip; \"*\" keeps them as fallback.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skipFallback": {
+          "type": "boolean",
+          "description": "Do not use this server in fallback queries."
+        },
+        "finalQuery": {
+          "type": "boolean",
+          "description": "Stop after querying this server, even on failure."
+        },
+        "clientIp": {
+          "type": "string",
+          "description": "EDNS Client Subnet IP sent to this server."
+        },
+        "queryStrategy": {
+          "$ref": "#/definitions/QueryStrategy"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Tag for routing this server's queries."
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "description": "Query timeout in milliseconds.",
+          "default": 4000
+        },
+        "disableCache": {
+          "type": "boolean",
+          "description": "Disable cache for this server."
+        },
+        "serveStale": {
+          "type": "boolean",
+          "description": "Serve expired cache entries while refreshing."
+        },
+        "serveExpiredTTL": {
+          "type": "integer",
+          "description": "Max seconds an expired entry may be served."
+        },
+        "id": {
+          "type": "string",
+          "description": "Identifier of this server (used by DNS scripts)."
+        }
+      }
+    },
+    "DokodemoSettings": {
+      "type": "object",
+      "description": "Dokodemo-door / tunnel inbound settings (Marzban's API_INBOUND uses this).",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Forward to this address (classic name; same as rewriteAddress).",
+          "examples": [
+            "127.0.0.1"
+          ]
+        },
+        "port": {
+          "type": "integer",
+          "description": "Forward to this port (classic name; same as rewritePort)."
+        },
+        "network": {
+          "$ref": "#/definitions/NetworkList",
+          "description": "Accepted networks (classic name; same as allowedNetwork)."
+        },
+        "rewriteAddress": {
+          "type": "string",
+          "description": "Forward to this address."
+        },
+        "rewritePort": {
+          "type": "integer",
+          "description": "Forward to this port."
+        },
+        "allowedNetwork": {
+          "$ref": "#/definitions/NetworkList",
+          "description": "Accepted networks."
+        },
+        "portMap": {
+          "type": "object",
+          "description": "Map of local port to \"host:port\" targets.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "followRedirect": {
+          "type": "boolean",
+          "description": "Use the original destination (with sockopt.tproxy)."
+        },
+        "userLevel": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/inbounds/dokodemo.html"
+    },
+    "DomainStrategy": {
+      "type": "string",
+      "description": "How domain targets are resolved before dialing: AsIs keeps the domain, UseIP* resolves with fallback to the domain, ForceIP* fails if resolution fails. Case-insensitive.",
+      "enum": [
+        "AsIs",
+        "UseIP",
+        "UseIPv4",
+        "UseIPv6",
+        "UseIPv4v6",
+        "UseIPv6v4",
+        "ForceIP",
+        "ForceIPv4",
+        "ForceIPv6",
+        "ForceIPv4v6",
+        "ForceIPv6v4"
+      ],
+      "default": "AsIs"
+    },
+    "Duration": {
+      "type": "string",
+      "description": "Go duration string such as \"10s\", \"1m\", \"500ms\".",
+      "examples": [
+        "10s",
+        "1m",
+        "300ms"
+      ]
+    },
+    "FakeDns": {
+      "type": [
+        "array",
+        "object"
+      ],
+      "description": "FakeDNS pool, or an array of pools (IPv4 and IPv6).",
+      "items": {
+        "$ref": "#/definitions/FakeDnsPool"
+      },
+      "properties": {
+        "ipPool": {
+          "type": "string",
+          "description": "CIDR from which fake IPs are allocated.",
+          "examples": [
+            "198.18.0.0/15",
+            "fc00::/18"
+          ]
+        },
+        "poolSize": {
+          "type": "integer",
+          "description": "Number of domain-IP mappings kept (LRU).",
+          "examples": [
+            65535
+          ]
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/fakedns.html"
+    },
+    "FakeDnsPool": {
+      "type": "object",
+      "description": "A FakeDNS address pool.",
+      "properties": {
+        "ipPool": {
+          "type": "string",
+          "description": "CIDR from which fake IPs are allocated.",
+          "examples": [
+            "198.18.0.0/15",
+            "fc00::/18"
+          ]
+        },
+        "poolSize": {
+          "type": "integer",
+          "description": "Number of domain-IP mappings kept (LRU).",
+          "examples": [
+            65535
+          ]
+        }
+      }
+    },
+    "Fallback": {
+      "type": "object",
+      "description": "Fallback target for traffic that fails protocol authentication.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Match on the TLS SNI; empty matches any."
+        },
+        "alpn": {
+          "type": "string",
+          "description": "Match on the negotiated TLS ALPN; empty matches any.",
+          "examples": [
+            "h2",
+            "http/1.1"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "description": "Match on the HTTP path of the first packet; must be empty or start with \"/\"."
+        },
+        "type": {
+          "type": "string",
+          "description": "Destination type; inferred from dest when empty (\"tcp\", \"unix\", or \"serve\" for serve-ws-none).",
+          "examples": [
+            "tcp",
+            "unix",
+            "serve"
+          ]
+        },
+        "dest": {
+          "type": [
+            "string",
+            "integer"
+          ],
+          "description": "Where to forward unmatched traffic: a port, \"addr:port\", a Unix socket path (\"@abstract\" too) or \"serve-ws-none\".",
+          "examples": [
+            80,
+            "127.0.0.1:8080",
+            "/dev/shm/web.sock",
+            "@nginx"
+          ]
+        },
+        "xver": {
+          "type": "integer",
+          "description": "Send a PROXY protocol header of this version (0 = off).",
+          "enum": [
+            0,
+            1,
+            2
+          ],
+          "default": 0
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/features/fallback.html"
+    },
+    "FinalMask": {
+      "type": "object",
+      "description": "Final masks (fragment, noise, obfuscation) applied to the raw connection.",
+      "properties": {
+        "tcp": {
+          "type": "array",
+          "description": "TCP mask layers, applied in order.",
+          "items": {
+            "$ref": "#/definitions/TcpMask"
+          }
+        },
+        "udp": {
+          "type": "array",
+          "description": "UDP mask layers, applied in order.",
+          "items": {
+            "$ref": "#/definitions/UdpMask"
+          }
+        },
+        "quicParams": {
+          "$ref": "#/definitions/QuicParams"
+        }
+      }
+    },
+    "FinalMaskFilter": {
+      "type": "object",
+      "description": "Source IP filter.",
+      "properties": {
+        "blockedSourceIPs": {
+          "type": "array",
+          "description": "Source IPs/CIDRs to block.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowedSourceIPs": {
+          "type": "array",
+          "description": "Only allow these source IPs/CIDRs.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "FinalMaskSudoku": {
+      "type": "object",
+      "description": "Sudoku obfuscation.",
+      "properties": {
+        "password": {
+          "type": "string",
+          "description": "Password."
+        },
+        "ascii": {
+          "type": "string",
+          "description": "ASCII mode."
+        },
+        "customTable": {
+          "type": "string",
+          "description": "Custom table."
+        },
+        "customTables": {
+          "type": "array",
+          "description": "Custom tables.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paddingMin": {
+          "type": "integer",
+          "description": "Min padding."
+        },
+        "paddingMax": {
+          "type": "integer",
+          "description": "Max padding."
+        },
+        "custom_table": {
+          "type": "string",
+          "description": "Legacy spelling of customTable.",
+          "deprecated": true
+        },
+        "custom_tables": {
+          "type": "array",
+          "description": "Legacy spelling of customTables.",
+          "items": {
+            "type": "string"
+          },
+          "deprecated": true
+        },
+        "padding_min": {
+          "type": "integer",
+          "description": "Legacy spelling of paddingMin.",
+          "deprecated": true
+        },
+        "padding_max": {
+          "type": "integer",
+          "description": "Legacy spelling of paddingMax.",
+          "deprecated": true
+        }
+      }
+    },
+    "Fingerprint": {
+      "type": "string",
+      "description": "uTLS ClientHello fingerprint to imitate (case-insensitive). Empty means chrome; \"unsafe\" disables uTLS; \"random\"/\"randomized\" pick one at startup.",
+      "enum": [
+        "chrome",
+        "firefox",
+        "safari",
+        "ios",
+        "android",
+        "edge",
+        "360",
+        "qq",
+        "random",
+        "randomized",
+        "randomizednoalpn",
+        "unsafe",
+        "hellofirefox_120",
+        "hellofirefox_148",
+        "hellochrome_120",
+        "hellochrome_131",
+        "hellochrome_133",
+        "helloios_13",
+        "helloios_14",
+        "helloedge_106",
+        "hellosafari_26_3",
+        "hello360_11_0",
+        "helloqq_11_1",
+        "hellogolang",
+        "hellorandomized",
+        "hellorandomizedalpn",
+        "hellorandomizednoalpn",
+        "hellofirefox_auto",
+        "hellofirefox_55",
+        "hellofirefox_56",
+        "hellofirefox_63",
+        "hellofirefox_65",
+        "hellofirefox_99",
+        "hellofirefox_102",
+        "hellofirefox_105",
+        "hellochrome_auto",
+        "hellochrome_58",
+        "hellochrome_62",
+        "hellochrome_70",
+        "hellochrome_72",
+        "hellochrome_83",
+        "hellochrome_87",
+        "hellochrome_96",
+        "hellochrome_100",
+        "hellochrome_102",
+        "hellochrome_106_shuffle",
+        "helloios_auto",
+        "helloios_11_1",
+        "helloios_12_1",
+        "helloandroid_11_okhttp",
+        "helloedge_85",
+        "helloedge_auto",
+        "hellosafari_16_0",
+        "hellosafari_auto",
+        "hello360_auto",
+        "hello360_7_5",
+        "helloqq_auto",
+        "hellochrome_100_psk",
+        "hellochrome_112_psk_shuf",
+        "hellochrome_114_padding_psk_shuf",
+        "hellochrome_115_pq",
+        "hellochrome_115_pq_psk",
+        "hellochrome_120_pq"
+      ],
+      "examples": [
+        "chrome",
+        "firefox",
+        "safari",
+        "random"
+      ]
+    },
+    "FreedomSettings": {
+      "type": "object",
+      "description": "Freedom (direct) outbound settings.",
+      "properties": {
+        "targetStrategy": {
+          "$ref": "#/definitions/DomainStrategy",
+          "description": "Resolve domains before connecting (migrated to sockopt.domainStrategy)."
+        },
+        "domainStrategy": {
+          "$ref": "#/definitions/DomainStrategy",
+          "description": "Deprecated alias of targetStrategy.",
+          "deprecated": true
+        },
+        "redirect": {
+          "type": "string",
+          "description": "Send all traffic to this \"host:port\" (either part may be empty).",
+          "examples": [
+            "127.0.0.1:3366",
+            ":443"
+          ]
+        },
+        "userLevel": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "proxyProtocol": {
+          "type": "integer",
+          "description": "Send a PROXY protocol header (0 = off).",
+          "enum": [
+            0,
+            1,
+            2
+          ],
+          "default": 0
+        },
+        "finalRules": {
+          "type": "array",
+          "description": "Final allow/block rules on the resolved destination.",
+          "items": {
+            "type": "object",
+            "description": "Final rule.",
+            "properties": {
+              "action": {
+                "type": "string",
+                "description": "Action for matching connections.",
+                "enum": [
+                  "allow",
+                  "block"
+                ]
+              },
+              "network": {
+                "$ref": "#/definitions/NetworkList"
+              },
+              "port": {
+                "$ref": "#/definitions/PortList"
+              },
+              "ip": {
+                "type": [
+                  "array",
+                  "string"
+                ],
+                "description": "IPs/CIDRs/geoip:.",
+                "items": {
+                  "type": "string"
+                },
+                "examples": [
+                  [
+                    "geoip:private"
+                  ]
+                ]
+              },
+              "blockDelay": {
+                "type": [
+                  "integer",
+                  "string"
+                ],
+                "description": "Delay before closing blocked connections, seconds."
+              }
+            }
+          }
+        },
+        "fragment": {
+          "type": "object",
+          "description": "Deprecated: use streamSettings.finalmask.tcp \"fragment\".",
+          "properties": {
+            "packets": {
+              "type": "string",
+              "description": "\"tlshello\" or a range such as \"1-3\".",
+              "examples": [
+                "tlshello",
+                "1-3"
+              ]
+            },
+            "length": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Fragment length range.",
+              "examples": [
+                "100-200"
+              ]
+            },
+            "interval": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Interval range in ms.",
+              "examples": [
+                "10-20"
+              ]
+            },
+            "maxSplit": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Max fragments."
+            }
+          },
+          "deprecated": true
+        },
+        "noises": {
+          "type": "array",
+          "description": "Deprecated: use streamSettings.finalmask.udp \"noise\".",
+          "items": {
+            "type": "object",
+            "description": "Noise.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Packet type.",
+                "enum": [
+                  "rand",
+                  "str",
+                  "hex",
+                  "base64"
+                ]
+              },
+              "packet": {
+                "type": "string",
+                "description": "Packet content or length range for rand."
+              },
+              "delay": {
+                "type": [
+                  "integer",
+                  "string"
+                ],
+                "description": "Delay in ms."
+              },
+              "applyTo": {
+                "type": "string",
+                "description": "IP family.",
+                "enum": [
+                  "ip",
+                  "ipv4",
+                  "ipv6",
+                  "all"
+                ],
+                "default": "ip"
+              }
+            }
+          },
+          "deprecated": true
+        },
+        "noise": {
+          "type": "object",
+          "description": "Removed: use noises / finalmask.",
+          "deprecated": true
+        },
+        "ipsBlocked": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Removed: migrated to finalRules.",
+          "items": {
+            "type": "string"
+          },
+          "deprecated": true
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbounds/freedom.html"
+    },
+    "Geodata": {
+      "type": "object",
+      "description": "Automatic geodata (geoip/geosite) updates.",
+      "properties": {
+        "cron": {
+          "type": "string",
+          "description": "Cron expression for automatic geodata updates.",
+          "examples": [
+            "0 4 * * *"
+          ]
+        },
+        "outbound": {
+          "type": "string",
+          "description": "Outbound tag used to download geodata."
+        },
+        "assets": {
+          "type": "array",
+          "description": "Assets to download.",
+          "items": {
+            "type": "object",
+            "description": "Geodata asset.",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "HTTPS URL of the asset."
+              },
+              "file": {
+                "type": "string",
+                "description": "Local file name to save it as.",
+                "examples": [
+                  "geosite.dat",
+                  "geoip.dat"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "GrpcSettings": {
+      "type": "object",
+      "description": "gRPC transport (deprecated by upstream in favour of XHTTP).",
+      "properties": {
+        "serviceName": {
+          "type": "string",
+          "description": "gRPC service name (path).",
+          "examples": [
+            "grpc"
+          ]
+        },
+        "authority": {
+          "type": "string",
+          "description": "HTTP/2 :authority to send."
+        },
+        "multiMode": {
+          "type": "boolean",
+          "description": "Use multi mode (client)."
+        },
+        "idle_timeout": {
+          "type": "integer",
+          "description": "Seconds without data before a health check (client).",
+          "default": 0
+        },
+        "health_check_timeout": {
+          "type": "integer",
+          "description": "Health check timeout in seconds (client).",
+          "default": 0
+        },
+        "permit_without_stream": {
+          "type": "boolean",
+          "description": "Allow health checks without active streams (client)."
+        },
+        "initial_windows_size": {
+          "type": "integer",
+          "description": "Initial HTTP/2 window size (0 = gRPC default)."
+        },
+        "user_agent": {
+          "type": "string",
+          "description": "User-Agent to send (client)."
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/transports/grpc.html"
+    },
+    "HttpHeaderRequest": {
+      "type": "object",
+      "description": "Fake HTTP request.",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "HTTP version.",
+          "default": "1.1"
+        },
+        "method": {
+          "type": "string",
+          "description": "HTTP method.",
+          "default": "GET"
+        },
+        "path": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Request paths (one is picked at random).",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "/"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "description": "Headers; array values are picked at random.",
+          "additionalProperties": {
+            "type": [
+              "array",
+              "string"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "HttpHeaderResponse": {
+      "type": "object",
+      "description": "Fake HTTP response.",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "HTTP version.",
+          "default": "1.1"
+        },
+        "status": {
+          "type": "string",
+          "description": "Status code.",
+          "default": "200"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Status reason.",
+          "default": "OK"
+        },
+        "headers": {
+          "type": "object",
+          "description": "Headers; array values are picked at random.",
+          "additionalProperties": {
+            "type": [
+              "array",
+              "string"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "HttpInboundSettings": {
+      "type": "object",
+      "description": "HTTP proxy inbound settings.",
+      "properties": {
+        "accounts": {
+          "type": "array",
+          "description": "Accounts (basic auth).",
+          "items": {
+            "type": "object",
+            "description": "Account.",
+            "properties": {
+              "user": {
+                "type": "string",
+                "description": "Username."
+              },
+              "pass": {
+                "type": "string",
+                "description": "Password."
+              }
+            }
+          }
+        },
+        "users": {
+          "type": "array",
+          "description": "Alias of accounts.",
+          "items": {
+            "type": "object",
+            "description": "Account.",
+            "properties": {
+              "user": {
+                "type": "string",
+                "description": "Username."
+              },
+              "pass": {
+                "type": "string",
+                "description": "Password."
+              }
+            }
+          }
+        },
+        "allowTransparent": {
+          "type": "boolean",
+          "description": "Forward all HTTP requests, not only proxy requests."
+        },
+        "userLevel": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/inbounds/http.html"
+    },
+    "HttpOutboundSettings": {
+      "type": "object",
+      "description": "HTTP proxy outbound settings.",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Server address."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Server port."
+        },
+        "user": {
+          "type": "string",
+          "description": "Username."
+        },
+        "pass": {
+          "type": "string",
+          "description": "Password."
+        },
+        "email": {
+          "type": "string",
+          "description": "User email, used in stats and logs."
+        },
+        "level": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "servers": {
+          "type": "array",
+          "description": "Legacy form with exactly one server; prefer the flat fields.",
+          "items": {
+            "type": "object",
+            "description": "Server.",
+            "properties": {
+              "address": {
+                "type": "string",
+                "description": "Server address."
+              },
+              "port": {
+                "type": "integer",
+                "description": "Server port."
+              },
+              "users": {
+                "type": "array",
+                "description": "At most one user.",
+                "items": {
+                  "type": "object",
+                  "description": "User.",
+                  "properties": {
+                    "user": {
+                      "type": "string",
+                      "description": "Username."
+                    },
+                    "pass": {
+                      "type": "string",
+                      "description": "Password."
+                    },
+                    "email": {
+                      "type": "string",
+                      "description": "User email, used in stats and logs."
+                    },
+                    "level": {
+                      "type": "integer",
+                      "description": "User level (selects a policy level).",
+                      "default": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "deprecated": true
+        },
+        "headers": {
+          "type": "object",
+          "description": "Extra CONNECT headers.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbounds/http.html"
+    },
+    "HttpUpgradeSettings": {
+      "type": "object",
+      "description": "HTTPUpgrade transport (deprecated by upstream in favour of XHTTP).",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "HTTP path; \"?ed=2560\" enables early data.",
+          "default": "/"
+        },
+        "host": {
+          "type": "string",
+          "description": "HTTP Host."
+        },
+        "headers": {
+          "type": "object",
+          "description": "Extra HTTP headers (must not contain Host).",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "acceptProxyProtocol": {
+          "type": "boolean",
+          "description": "Accept a PROXY protocol header (inbound only)."
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/transports/httpupgrade.html"
+    },
+    "HysteriaInboundSettings": {
+      "type": "object",
+      "description": "Hysteria 2 inbound settings.",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "description": "Only 2 is supported.",
+          "enum": [
+            2
+          ],
+          "default": 2
+        },
+        "clients": {
+          "type": "array",
+          "description": "Managed by the panel; leave empty.",
+          "items": {
+            "type": "object",
+            "description": "Hysteria user.",
+            "properties": {
+              "auth": {
+                "type": "string",
+                "description": "Password."
+              },
+              "email": {
+                "type": "string",
+                "description": "User email, used in stats and logs."
+              },
+              "level": {
+                "type": "integer",
+                "description": "User level (selects a policy level).",
+                "default": 0
+              }
+            }
+          }
+        },
+        "users": {
+          "type": "array",
+          "description": "Alias of clients. Managed by the panel; leave empty.",
+          "items": {
+            "type": "object",
+            "description": "Hysteria user.",
+            "properties": {
+              "auth": {
+                "type": "string",
+                "description": "Password."
+              },
+              "email": {
+                "type": "string",
+                "description": "User email, used in stats and logs."
+              },
+              "level": {
+                "type": "integer",
+                "description": "User level (selects a policy level).",
+                "default": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "HysteriaOutboundSettings": {
+      "type": "object",
+      "description": "Hysteria 2 outbound settings (auth goes in streamSettings.hysteriaSettings).",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "description": "Only 2 is supported.",
+          "enum": [
+            2
+          ],
+          "default": 2
+        },
+        "address": {
+          "type": "string",
+          "description": "Server address."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Server port."
+        }
+      }
+    },
+    "HysteriaTransportSettings": {
+      "type": "object",
+      "description": "Hysteria 2 transport.",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "description": "Hysteria version; only 2 is supported.",
+          "enum": [
+            2
+          ],
+          "default": 2
+        },
+        "auth": {
+          "type": "string",
+          "description": "Authentication password (client)."
+        },
+        "udpIdleTimeout": {
+          "type": "integer",
+          "description": "UDP session idle timeout in seconds (2-600).",
+          "default": 60
+        },
+        "masquerade": {
+          "type": "object",
+          "description": "Masquerade for the server.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "What unauthenticated clients see.",
+              "enum": [
+                "404",
+                "file",
+                "proxy",
+                "string"
+              ],
+              "default": "404"
+            },
+            "dir": {
+              "type": "string",
+              "description": "Directory to serve (type file)."
+            },
+            "url": {
+              "type": "string",
+              "description": "Upstream URL to reverse-proxy (type proxy)."
+            },
+            "rewriteHost": {
+              "type": "boolean",
+              "description": "Rewrite the Host header (type proxy)."
+            },
+            "xForwarded": {
+              "type": "boolean",
+              "description": "Add X-Forwarded-* headers (type proxy)."
+            },
+            "insecure": {
+              "type": "boolean",
+              "description": "Skip upstream TLS verification (type proxy)."
+            },
+            "content": {
+              "type": "string",
+              "description": "Response body (type string)."
+            },
+            "headers": {
+              "type": "object",
+              "description": "Response headers (type string).",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "statusCode": {
+              "type": "integer",
+              "description": "Response status code (type string)."
+            }
+          }
+        }
+      }
+    },
+    "Inbound": {
+      "type": "object",
+      "description": "An inbound (listener).",
+      "x-docs": "https://xtls.github.io/en/config/inbound.html",
+      "properties": {
+        "tag": {
+          "type": "string",
+          "description": "Inbound tag, used by routing. In Marzban the tag names the inbound for users/hosts; \"API_INBOUND\" is the panel's API inbound.",
+          "examples": [
+            "VLESS TCP REALITY",
+            "API_INBOUND"
+          ]
+        },
+        "protocol": {
+          "type": "string",
+          "description": "Inbound protocol. \"tunnel\" = \"dokodemo-door\"; \"mixed\" = SOCKS+HTTP.",
+          "enum": [
+            "vless",
+            "vmess",
+            "trojan",
+            "shadowsocks",
+            "socks",
+            "mixed",
+            "http",
+            "dokodemo-door",
+            "tunnel",
+            "wireguard",
+            "hysteria",
+            "masque",
+            "tun"
+          ]
+        },
+        "listen": {
+          "type": "string",
+          "description": "Listen address or Unix socket path (\"@name\" for abstract).",
+          "default": "0.0.0.0",
+          "examples": [
+            "0.0.0.0",
+            "127.0.0.1",
+            "::",
+            "/dev/shm/xray.sock"
+          ]
+        },
+        "port": {
+          "$ref": "#/definitions/PortList",
+          "description": "Listen port(s); not needed for Unix sockets or tun."
+        },
+        "streamSettings": {
+          "$ref": "#/definitions/StreamSettings"
+        },
+        "sniffing": {
+          "$ref": "#/definitions/Sniffing"
+        }
+      },
+      "required": [
+        "protocol"
+      ],
+      "x-switch": [
+        {
+          "property": "settings",
+          "on": "protocol",
+          "cases": {
+            "vless": {
+              "$ref": "#/definitions/VlessInboundSettings"
+            },
+            "vmess": {
+              "$ref": "#/definitions/VmessInboundSettings"
+            },
+            "trojan": {
+              "$ref": "#/definitions/TrojanInboundSettings"
+            },
+            "shadowsocks": {
+              "$ref": "#/definitions/ShadowsocksInboundSettings"
+            },
+            "socks": {
+              "$ref": "#/definitions/SocksInboundSettings"
+            },
+            "mixed": {
+              "$ref": "#/definitions/SocksInboundSettings"
+            },
+            "http": {
+              "$ref": "#/definitions/HttpInboundSettings"
+            },
+            "dokodemo-door": {
+              "$ref": "#/definitions/DokodemoSettings"
+            },
+            "tunnel": {
+              "$ref": "#/definitions/DokodemoSettings"
+            },
+            "wireguard": {
+              "$ref": "#/definitions/WireguardSettings"
+            },
+            "hysteria": {
+              "$ref": "#/definitions/HysteriaInboundSettings"
+            },
+            "masque": {
+              "$ref": "#/definitions/MasqueInboundSettings"
+            },
+            "tun": {
+              "$ref": "#/definitions/TunSettings"
+            }
+          }
+        }
+      ]
+    },
+    "KcpSettings": {
+      "type": "object",
+      "description": "mKCP transport.",
+      "properties": {
+        "mtu": {
+          "type": "integer",
+          "description": "Max transmission unit (>= 21).",
+          "default": 1350
+        },
+        "tti": {
+          "type": "integer",
+          "description": "Transmission interval in ms (10-1000).",
+          "default": 20
+        },
+        "uplinkCapacity": {
+          "type": "integer",
+          "description": "Uplink capacity in MB/s.",
+          "default": 5
+        },
+        "downlinkCapacity": {
+          "type": "integer",
+          "description": "Downlink capacity in MB/s.",
+          "default": 20
+        },
+        "cwndMultiplier": {
+          "type": "integer",
+          "description": "Congestion window multiplier (>= 1)."
+        },
+        "maxSendingWindow": {
+          "type": "integer",
+          "description": "Max sending window size."
+        },
+        "header": {
+          "type": "object",
+          "description": "Ignored by this version; use streamSettings.finalmask.udp with type \"mkcp-legacy\".",
+          "deprecated": true
+        },
+        "seed": {
+          "type": "string",
+          "description": "Ignored by this version; use finalmask \"mkcp-legacy\" value.",
+          "deprecated": true
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/transports/mkcp.html"
+    },
+    "LeastLoadSettings": {
+      "type": "object",
+      "description": "leastLoad strategy settings.",
+      "properties": {
+        "costs": {
+          "type": "array",
+          "description": "Per-outbound cost weights.",
+          "items": {
+            "type": "object",
+            "description": "Cost entry.",
+            "properties": {
+              "regexp": {
+                "type": "boolean",
+                "description": "Treat match as a regular expression."
+              },
+              "match": {
+                "type": "string",
+                "description": "Outbound tag (or regexp) to weight."
+              },
+              "value": {
+                "type": "number",
+                "description": "Cost weight."
+              }
+            }
+          }
+        },
+        "baselines": {
+          "type": "array",
+          "description": "RTT baselines used to group outbounds.",
+          "items": {
+            "$ref": "#/definitions/Duration"
+          }
+        },
+        "expected": {
+          "type": "integer",
+          "description": "Number of outbounds to select."
+        },
+        "maxRTT": {
+          "$ref": "#/definitions/Duration",
+          "description": "Outbounds slower than this are ignored."
+        },
+        "tolerance": {
+          "type": "number",
+          "description": "Tolerated failure ratio (0-1)."
+        }
+      }
+    },
+    "LevelPolicy": {
+      "type": "object",
+      "description": "Policy for one user level.",
+      "properties": {
+        "handshake": {
+          "type": "integer",
+          "description": "Handshake timeout in seconds."
+        },
+        "connIdle": {
+          "type": "integer",
+          "description": "Idle connection timeout in seconds."
+        },
+        "uplinkOnly": {
+          "type": "integer",
+          "description": "Seconds to keep the connection after the downlink closes."
+        },
+        "downlinkOnly": {
+          "type": "integer",
+          "description": "Seconds to keep the connection after the uplink closes."
+        },
+        "statsUserUplink": {
+          "type": "boolean",
+          "description": "Count per-user uplink traffic."
+        },
+        "statsUserDownlink": {
+          "type": "boolean",
+          "description": "Count per-user downlink traffic."
+        },
+        "statsUserOnline": {
+          "type": "boolean",
+          "description": "Track per-user online IPs."
+        },
+        "bufferSize": {
+          "type": "integer",
+          "description": "Per-connection buffer size in KB; negative means unlimited, 0 disables buffering."
+        }
+      }
+    },
+    "LimitFallback": {
+      "type": "object",
+      "description": "Rate limit for fallback (non-REALITY) traffic.",
+      "properties": {
+        "afterBytes": {
+          "type": "integer",
+          "description": "Start limiting after this many bytes."
+        },
+        "bytesPerSec": {
+          "type": "integer",
+          "description": "Rate limit in bytes per second (0 = off)."
+        },
+        "burstBytesPerSec": {
+          "type": "integer",
+          "description": "Burst allowance in bytes per second."
+        }
+      }
+    },
+    "Log": {
+      "type": "object",
+      "description": "Logging settings.",
+      "properties": {
+        "access": {
+          "type": "string",
+          "description": "Access log file path; empty logs to stdout, \"none\" disables it.",
+          "examples": [
+            "/var/log/xray/access.log",
+            "none"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "Error log file path; empty logs to stdout, \"none\" disables it.",
+          "examples": [
+            "/var/log/xray/error.log",
+            "none"
+          ]
+        },
+        "loglevel": {
+          "type": "string",
+          "description": "Error log level; anything unrecognised means \"warning\". \"none\" disables both logs.",
+          "enum": [
+            "debug",
+            "info",
+            "warning",
+            "error",
+            "none"
+          ],
+          "default": "warning"
+        },
+        "dnsLog": {
+          "type": "boolean",
+          "description": "Log DNS queries.",
+          "default": false
+        },
+        "maskAddress": {
+          "type": "string",
+          "description": "Mask IPs in logs: \"quarter\", \"half\", \"full\" or custom \"/v4bits+/v6bits\".",
+          "examples": [
+            "quarter",
+            "half",
+            "full",
+            "/16+/48"
+          ]
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/log.html"
+    },
+    "LoopbackSettings": {
+      "type": "object",
+      "description": "Loopback outbound settings.",
+      "properties": {
+        "inboundTag": {
+          "type": "string",
+          "description": "Inbound tag the traffic re-enters routing with."
+        },
+        "sniffing": {
+          "$ref": "#/definitions/Sniffing"
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbounds/loopback.html"
+    },
+    "MasqueInboundSettings": {
+      "type": "object",
+      "description": "MASQUE inbound settings.",
+      "properties": {
+        "clients": {
+          "type": "array",
+          "description": "Managed by the panel; leave empty.",
+          "items": {
+            "type": "object",
+            "description": "MASQUE user.",
+            "properties": {
+              "pass": {
+                "type": "string",
+                "description": "Password."
+              },
+              "email": {
+                "type": "string",
+                "description": "User email (required, unique)."
+              },
+              "level": {
+                "type": "integer",
+                "description": "User level (selects a policy level).",
+                "default": 0
+              }
+            }
+          }
+        },
+        "users": {
+          "type": "array",
+          "description": "Alias of clients. Managed by the panel; leave empty.",
+          "items": {
+            "type": "object",
+            "description": "MASQUE user.",
+            "properties": {
+              "pass": {
+                "type": "string",
+                "description": "Password."
+              },
+              "email": {
+                "type": "string",
+                "description": "User email (required, unique)."
+              },
+              "level": {
+                "type": "integer",
+                "description": "User level (selects a policy level).",
+                "default": 0
+              }
+            }
+          }
+        },
+        "address": {
+          "type": "array",
+          "description": "Tunnel prefixes (at most one IPv4 and one IPv6).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mtu": {
+          "type": "integer",
+          "description": "Tunnel MTU (1280-65535)."
+        }
+      }
+    },
+    "MasqueOutboundSettings": {
+      "type": "object",
+      "description": "MASQUE outbound settings.",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Server address."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Server port."
+        },
+        "remoteDNS": {
+          "type": "array",
+          "description": "DNS servers used inside the tunnel.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "MasqueSettings": {
+      "type": "object",
+      "description": "MASQUE transport (only with the masque protocol).",
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "HTTP authority (defaults to the WARP host when warp is set)."
+        },
+        "path": {
+          "type": "string",
+          "description": "URI template; only {target} and {ipproto} variables.",
+          "examples": [
+            "/.well-known/masque/ip/{target}/{ipproto}/"
+          ]
+        },
+        "user": {
+          "type": "string",
+          "description": "Basic auth user (not with warp)."
+        },
+        "pass": {
+          "type": "string",
+          "description": "Basic auth password (not with warp)."
+        },
+        "headers": {
+          "type": "object",
+          "description": "Extra HTTP headers (no Host/Capsule-Protocol).",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "warp": {
+          "type": "object",
+          "description": "Cloudflare WARP (MASQUE) credentials.",
+          "properties": {
+            "privateKey": {
+              "type": "string",
+              "description": "ECDSA P-256 private key (PEM or base64 DER)."
+            },
+            "publicKey": {
+              "type": "string",
+              "description": "Peer PKIX public key (PEM or base64 DER)."
+            },
+            "address": {
+              "type": "array",
+              "description": "Assigned addresses (one IPv4 and/or one IPv6).",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "xmux": {
+          "$ref": "#/definitions/Xmux"
+        }
+      }
+    },
+    "Metrics": {
+      "type": "object",
+      "description": "Metrics (expvar/pprof) endpoint; needs a tag or listen.",
+      "properties": {
+        "tag": {
+          "type": "string",
+          "description": "Outbound tag for metrics (route an inbound to it).",
+          "examples": [
+            "metrics_out"
+          ]
+        },
+        "listen": {
+          "type": "string",
+          "description": "Listen address serving /debug/vars and pprof directly.",
+          "examples": [
+            "127.0.0.1:11111"
+          ]
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/metrics.html"
+    },
+    "Mux": {
+      "type": "object",
+      "description": "Multiplexing.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable Mux.Cool multiplexing."
+        },
+        "concurrency": {
+          "type": "integer",
+          "description": "Max TCP streams per connection (negative disables TCP mux).",
+          "default": 8
+        },
+        "xudpConcurrency": {
+          "type": "integer",
+          "description": "Max XUDP streams (negative disables)."
+        },
+        "xudpProxyUDP443": {
+          "type": "string",
+          "description": "How to handle UDP/443 (QUIC) with mux.",
+          "enum": [
+            "reject",
+            "allow",
+            "skip"
+          ],
+          "default": "reject"
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbound.html#muxobject"
+    },
+    "NetworkList": {
+      "type": [
+        "string",
+        "array"
+      ],
+      "description": "Networks: \"tcp\", \"udp\" (\"unix\" also parses); an array or a comma-separated string such as \"tcp,udp\".",
+      "items": {
+        "type": "string",
+        "enum": [
+          "tcp",
+          "udp",
+          "unix"
+        ]
+      },
+      "examples": [
+        "tcp",
+        "udp",
+        "tcp,udp"
+      ]
+    },
+    "Observatory": {
+      "type": "object",
+      "description": "Background connection observatory (for leastPing balancers).",
+      "properties": {
+        "subjectSelector": {
+          "type": "array",
+          "description": "Outbound tag prefixes to probe.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "probeURL": {
+          "type": "string",
+          "description": "URL used for probing.",
+          "examples": [
+            "https://www.google.com/generate_204"
+          ]
+        },
+        "probeInterval": {
+          "$ref": "#/definitions/Duration",
+          "description": "Interval between probes."
+        },
+        "enableConcurrency": {
+          "type": "boolean",
+          "description": "Probe all matched outbounds concurrently."
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/observatory.html"
+    },
+    "Outbound": {
+      "type": "object",
+      "description": "An outbound (connection target).",
+      "x-docs": "https://xtls.github.io/en/config/outbound.html",
+      "properties": {
+        "tag": {
+          "type": "string",
+          "description": "Outbound tag, used by routing.",
+          "examples": [
+            "DIRECT",
+            "BLOCK"
+          ]
+        },
+        "protocol": {
+          "type": "string",
+          "description": "Outbound protocol. \"direct\" = \"freedom\", \"block\" = \"blackhole\".",
+          "enum": [
+            "freedom",
+            "direct",
+            "blackhole",
+            "block",
+            "dns",
+            "loopback",
+            "vless",
+            "vmess",
+            "trojan",
+            "shadowsocks",
+            "socks",
+            "http",
+            "wireguard",
+            "hysteria",
+            "masque"
+          ]
+        },
+        "sendThrough": {
+          "type": "string",
+          "description": "Local IP (or CIDR for random IPs) to send from; \"origin\"/\"srcip\" use the inbound's local IP.",
+          "examples": [
+            "0.0.0.0",
+            "2001:db8::/64",
+            "origin"
+          ]
+        },
+        "streamSettings": {
+          "$ref": "#/definitions/StreamSettings"
+        },
+        "mux": {
+          "$ref": "#/definitions/Mux"
+        },
+        "targetStrategy": {
+          "$ref": "#/definitions/DomainStrategy",
+          "description": "Resolve the target domain before sending (for freedom it moves to sockopt.domainStrategy)."
+        },
+        "proxySettings": {
+          "type": "object",
+          "description": "Removed: the core rejects it; use streamSettings.sockopt.dialerProxy.",
+          "deprecated": true
+        }
+      },
+      "required": [
+        "protocol"
+      ],
+      "x-switch": [
+        {
+          "property": "settings",
+          "on": "protocol",
+          "cases": {
+            "freedom": {
+              "$ref": "#/definitions/FreedomSettings"
+            },
+            "direct": {
+              "$ref": "#/definitions/FreedomSettings"
+            },
+            "blackhole": {
+              "$ref": "#/definitions/BlackholeSettings"
+            },
+            "block": {
+              "$ref": "#/definitions/BlackholeSettings"
+            },
+            "dns": {
+              "$ref": "#/definitions/DnsOutboundSettings"
+            },
+            "loopback": {
+              "$ref": "#/definitions/LoopbackSettings"
+            },
+            "vless": {
+              "$ref": "#/definitions/VlessOutboundSettings"
+            },
+            "vmess": {
+              "$ref": "#/definitions/VmessOutboundSettings"
+            },
+            "trojan": {
+              "$ref": "#/definitions/TrojanOutboundSettings"
+            },
+            "shadowsocks": {
+              "$ref": "#/definitions/ShadowsocksOutboundSettings"
+            },
+            "socks": {
+              "$ref": "#/definitions/SocksOutboundSettings"
+            },
+            "http": {
+              "$ref": "#/definitions/HttpOutboundSettings"
+            },
+            "wireguard": {
+              "$ref": "#/definitions/WireguardSettings"
+            },
+            "hysteria": {
+              "$ref": "#/definitions/HysteriaOutboundSettings"
+            },
+            "masque": {
+              "$ref": "#/definitions/MasqueOutboundSettings"
+            }
+          }
+        }
+      ]
+    },
+    "Policy": {
+      "type": "object",
+      "description": "Connection policies and statistics switches.",
+      "properties": {
+        "levels": {
+          "type": "object",
+          "description": "Policies keyed by user level (as a string, e.g. \"0\").",
+          "additionalProperties": {
+            "$ref": "#/definitions/LevelPolicy"
+          }
+        },
+        "system": {
+          "type": "object",
+          "description": "System-wide statistics switches.",
+          "properties": {
+            "statsInboundUplink": {
+              "type": "boolean",
+              "description": "Count uplink traffic of all tagged inbounds."
+            },
+            "statsInboundDownlink": {
+              "type": "boolean",
+              "description": "Count downlink traffic of all tagged inbounds."
+            },
+            "statsOutboundUplink": {
+              "type": "boolean",
+              "description": "Count uplink traffic of all tagged outbounds."
+            },
+            "statsOutboundDownlink": {
+              "type": "boolean",
+              "description": "Count downlink traffic of all tagged outbounds."
+            }
+          }
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/policy.html"
+    },
+    "PortList": {
+      "type": [
+        "integer",
+        "string"
+      ],
+      "description": "A port, a range \"from-to\", or a comma-separated list of both (\"env:VAR\" reads an environment variable).",
+      "examples": [
+        443,
+        "1000-2000",
+        "80,443,8000-9000"
+      ]
+    },
+    "QueryStrategy": {
+      "type": "string",
+      "description": "Which record types to query: UseIP (A+AAAA), UseIPv4, UseIPv6, UseSystem. Case-insensitive; also accepts use_ip/use-ip style aliases. Unknown values mean UseIP.",
+      "enum": [
+        "UseIP",
+        "UseIPv4",
+        "UseIPv6",
+        "UseSystem",
+        "UseIP4",
+        "UseIP6",
+        "UseSys"
+      ],
+      "default": "UseIP"
+    },
+    "QuicParams": {
+      "type": "object",
+      "description": "QUIC parameters for QUIC-based transports.",
+      "properties": {
+        "congestion": {
+          "type": "string",
+          "description": "QUIC congestion control.",
+          "enum": [
+            "bbr",
+            "reno",
+            "brutal",
+            "force-brutal"
+          ]
+        },
+        "bbrProfile": {
+          "type": "string",
+          "description": "BBR profile.",
+          "enum": [
+            "conservative",
+            "standard",
+            "aggressive"
+          ],
+          "default": "standard"
+        },
+        "brutalUp": {
+          "type": "string",
+          "description": "Brutal upload bandwidth (e.g. \"100 mbps\", >= 512 kbps).",
+          "examples": [
+            "100 mbps",
+            "50m"
+          ]
+        },
+        "brutalDown": {
+          "type": "string",
+          "description": "Brutal download bandwidth.",
+          "examples": [
+            "200 mbps"
+          ]
+        },
+        "brutalDisableLossCompensation": {
+          "type": "boolean",
+          "description": "Disable Brutal loss compensation."
+        },
+        "initStreamReceiveWindow": {
+          "type": "integer",
+          "description": "Initial stream receive window (>= 16384)."
+        },
+        "maxStreamReceiveWindow": {
+          "type": "integer",
+          "description": "Max stream receive window (>= 16384)."
+        },
+        "initConnectionReceiveWindow": {
+          "type": "integer",
+          "description": "Initial connection receive window (>= 16384)."
+        },
+        "maxConnectionReceiveWindow": {
+          "type": "integer",
+          "description": "Max connection receive window (>= 16384)."
+        },
+        "maxIdleTimeout": {
+          "type": "integer",
+          "description": "Max idle timeout in seconds (4-120)."
+        },
+        "keepAlivePeriod": {
+          "type": "integer",
+          "description": "Keep-alive period in seconds (2-60)."
+        },
+        "disablePathMTUDiscovery": {
+          "type": "boolean",
+          "description": "Disable path MTU discovery."
+        },
+        "disableChromeParrot": {
+          "type": "boolean",
+          "description": "Do not imitate Chrome's QUIC parameters."
+        },
+        "disableGSO": {
+          "type": "boolean",
+          "description": "Disable UDP GSO."
+        },
+        "maxIncomingStreams": {
+          "type": "integer",
+          "description": "Max incoming streams (>= 8)."
+        },
+        "disableStatelessReset": {
+          "type": "boolean",
+          "description": "Disable stateless reset."
+        },
+        "debug": {
+          "type": "boolean",
+          "description": "Debug logging."
+        }
+      }
+    },
+    "RawSettings": {
+      "type": "object",
+      "description": "RAW (formerly TCP) transport.",
+      "properties": {
+        "header": {
+          "type": "object",
+          "description": "Header obfuscation.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Header obfuscation type.",
+              "enum": [
+                "none",
+                "http"
+              ],
+              "default": "none"
+            },
+            "request": {
+              "$ref": "#/definitions/HttpHeaderRequest",
+              "x-show-if": {
+                "type": [
+                  "http"
+                ]
+              }
+            },
+            "response": {
+              "$ref": "#/definitions/HttpHeaderResponse",
+              "x-show-if": {
+                "type": [
+                  "http"
+                ]
+              }
+            }
+          }
+        },
+        "acceptProxyProtocol": {
+          "type": "boolean",
+          "description": "Accept a PROXY protocol header (inbound only)."
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/transports/raw.html"
+    },
+    "RealitySettings": {
+      "type": "object",
+      "description": "REALITY settings (RAW, XHTTP or gRPC only).",
+      "properties": {
+        "show": {
+          "type": "boolean",
+          "description": "Print debug information."
+        },
+        "target": {
+          "type": [
+            "string",
+            "integer"
+          ],
+          "description": "Server: where non-REALITY traffic is forwarded (\"host:port\", port, or Unix socket).",
+          "examples": [
+            "example.com:443",
+            443,
+            "/dev/shm/nginx.sock"
+          ]
+        },
+        "dest": {
+          "type": [
+            "string",
+            "integer"
+          ],
+          "description": "Alias of target (prefer target).",
+          "examples": [
+            "example.com:443"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "description": "Target network type; inferred from target when empty.",
+          "examples": [
+            "tcp",
+            "unix"
+          ]
+        },
+        "xver": {
+          "type": "integer",
+          "description": "PROXY protocol version sent to target (0 = off).",
+          "enum": [
+            0,
+            1,
+            2
+          ],
+          "default": 0
+        },
+        "serverNames": {
+          "type": "array",
+          "description": "Server: SNIs clients may use.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "privateKey": {
+          "type": "string",
+          "description": "Server: X25519 private key (base64url, from \"xray x25519\")."
+        },
+        "shortIds": {
+          "type": "array",
+          "description": "Server: allowed short IDs (hex, up to 16 chars; \"\" allowed).",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "",
+              "0123abcd"
+            ]
+          ]
+        },
+        "minClientVer": {
+          "type": "string",
+          "description": "Server: minimum Xray client version (x.y.z)."
+        },
+        "maxClientVer": {
+          "type": "string",
+          "description": "Server: maximum Xray client version (x.y.z)."
+        },
+        "maxTimeDiff": {
+          "type": "integer",
+          "description": "Server: max allowed clock difference in ms (0 = off)."
+        },
+        "mldsa65Seed": {
+          "type": "string",
+          "description": "Server: ML-DSA-65 seed for post-quantum signatures."
+        },
+        "limitFallbackUpload": {
+          "$ref": "#/definitions/LimitFallback"
+        },
+        "limitFallbackDownload": {
+          "$ref": "#/definitions/LimitFallback"
+        },
+        "masterKeyLog": {
+          "type": "string",
+          "description": "Write TLS master keys to this file (debugging)."
+        },
+        "fingerprint": {
+          "$ref": "#/definitions/Fingerprint",
+          "description": "Client: uTLS fingerprint (required; \"unsafe\" and \"hellogolang\" are rejected)."
+        },
+        "serverName": {
+          "type": "string",
+          "description": "Client: SNI to send (one of the server's serverNames)."
+        },
+        "password": {
+          "type": "string",
+          "description": "Client: the server's public key (base64url)."
+        },
+        "publicKey": {
+          "type": "string",
+          "description": "Client: alias of password (prefer password)."
+        },
+        "shortId": {
+          "type": "string",
+          "description": "Client: short ID (hex)."
+        },
+        "mldsa65Verify": {
+          "type": "string",
+          "description": "Client: ML-DSA-65 public key for verification."
+        },
+        "spiderX": {
+          "type": "string",
+          "description": "Client: initial crawler path and parameters.",
+          "default": "/"
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/transport.html#realityobject"
+    },
+    "Reverse": {
+      "type": "object",
+      "description": "Legacy reverse proxy: removed, the core rejects it. Use VLESS reverse instead.",
+      "properties": {
+        "bridges": {
+          "type": "array",
+          "description": "Bridges.",
+          "items": {
+            "type": "object",
+            "description": "Bridge.",
+            "properties": {
+              "tag": {
+                "type": "string",
+                "description": "Bridge tag."
+              },
+              "domain": {
+                "type": "string",
+                "description": "Domain used for the reverse connection."
+              }
+            }
+          }
+        },
+        "portals": {
+          "type": "array",
+          "description": "Portals.",
+          "items": {
+            "type": "object",
+            "description": "Portal.",
+            "properties": {
+              "tag": {
+                "type": "string",
+                "description": "Portal tag."
+              },
+              "domain": {
+                "type": "string",
+                "description": "Domain used for the reverse connection."
+              }
+            }
+          }
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/reverse.html",
+      "deprecated": true
+    },
+    "Routing": {
+      "type": "object",
+      "description": "Routing.",
+      "properties": {
+        "domainStrategy": {
+          "type": "string",
+          "description": "Domain resolution for IP rules (case-insensitive): AsIs, IPIfNonMatch (resolve if no rule matched), IPOnDemand (resolve on first IP rule).",
+          "enum": [
+            "AsIs",
+            "IPIfNonMatch",
+            "IPOnDemand"
+          ],
+          "default": "AsIs"
+        },
+        "rules": {
+          "type": "array",
+          "description": "Rules, evaluated top to bottom; the first match wins.",
+          "items": {
+            "$ref": "#/definitions/RoutingRule"
+          }
+        },
+        "balancers": {
+          "type": "array",
+          "description": "Load balancers.",
+          "items": {
+            "$ref": "#/definitions/Balancer"
+          }
+        },
+        "script": {
+          "type": "string",
+          "description": "Routing script; cannot be combined with rules or domainStrategy."
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/routing.html"
+    },
+    "RoutingRule": {
+      "type": "object",
+      "description": "A routing rule; all specified conditions must match.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Legacy rule type; not read by the core (all rules are field rules).",
+          "enum": [
+            "field"
+          ],
+          "deprecated": true
+        },
+        "ruleTag": {
+          "type": "string",
+          "description": "Name of the rule, shown in logs."
+        },
+        "outboundTag": {
+          "type": "string",
+          "description": "Outbound to use when the rule matches (this or balancerTag is required)."
+        },
+        "balancerTag": {
+          "type": "string",
+          "description": "Balancer to use when the rule matches."
+        },
+        "domain": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Domain matchers: plain substring, \"domain:\", \"full:\", \"regexp:\", \"keyword:\", \"geosite:\", \"ext:file:tag\".",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "geosite:category-ads-all",
+              "domain:example.com",
+              "full:www.example.com"
+            ]
+          ]
+        },
+        "domains": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Alias of domain (prefer domain).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ip": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Destination IP matchers: IP, CIDR, \"geoip:\", \"ext:file:tag\"; prefix \"!\" to negate geoip.",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "geoip:private",
+              "10.0.0.0/8",
+              "geoip:!cn"
+            ]
+          ]
+        },
+        "port": {
+          "$ref": "#/definitions/PortList",
+          "description": "Destination port(s)."
+        },
+        "sourcePort": {
+          "$ref": "#/definitions/PortList",
+          "description": "Source port(s)."
+        },
+        "localPort": {
+          "$ref": "#/definitions/PortList",
+          "description": "Local (inbound listen) port(s)."
+        },
+        "network": {
+          "$ref": "#/definitions/NetworkList",
+          "description": "Network(s) to match."
+        },
+        "sourceIP": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Source IP matchers (same syntax as ip).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Alias of sourceIP (prefer sourceIP).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "localIP": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Local (inbound listen) IP matchers.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "user": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "User emails to match; \"regexp:\" supported.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vlessRoute": {
+          "$ref": "#/definitions/PortList",
+          "description": "VLESS route value(s) (from the UUID's 7th-8th bytes) to match."
+        },
+        "inboundTag": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Inbound tags to match.",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "API_INBOUND"
+            ]
+          ]
+        },
+        "protocol": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Sniffed protocols to match.",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "http",
+              "tls",
+              "quic",
+              "bittorrent"
+            ]
+          ]
+        },
+        "attrs": {
+          "type": "object",
+          "description": "HTTP header attributes to match (sniffed HTTP only), e.g. {\":method\": \"GET\"}.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "process": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Local process names/paths to match (client-side).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "localOS": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Local OS to match.",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "linux",
+              "windows",
+              "android"
+            ]
+          ]
+        },
+        "webhook": {
+          "type": "object",
+          "description": "Send a webhook when the rule matches.",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "URL to notify when the rule matches."
+            },
+            "deduplication": {
+              "type": "integer",
+              "description": "Seconds to suppress duplicate notifications."
+            },
+            "headers": {
+              "type": "object",
+              "description": "Extra HTTP headers.",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/routing.html#ruleobject"
+    },
+    "ShadowsocksClient": {
+      "type": "object",
+      "description": "Shadowsocks user.",
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "Cipher (legacy single-cipher users); must be empty for Shadowsocks 2022 users.",
+          "enum": [
+            "2022-blake3-aes-128-gcm",
+            "2022-blake3-aes-256-gcm",
+            "2022-blake3-chacha20-poly1305",
+            "aes-128-gcm",
+            "aes-256-gcm",
+            "chacha20-poly1305",
+            "xchacha20-poly1305",
+            "chacha20-ietf-poly1305",
+            "xchacha20-ietf-poly1305",
+            "aead_aes_128_gcm",
+            "aead_aes_256_gcm",
+            "aead_chacha20_poly1305",
+            "aead_xchacha20_poly1305"
+          ]
+        },
+        "password": {
+          "type": "string",
+          "description": "Password (Shadowsocks 2022: base64 key)."
+        },
+        "email": {
+          "type": "string",
+          "description": "User email, used in stats and logs."
+        },
+        "level": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "address": {
+          "type": "string",
+          "description": "Relay destination address (Shadowsocks 2022 relay)."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Relay destination port (Shadowsocks 2022 relay)."
+        }
+      }
+    },
+    "ShadowsocksInboundSettings": {
+      "type": "object",
+      "description": "Shadowsocks inbound settings.",
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "Cipher. 2022-blake3-* select Shadowsocks 2022 (multi-user only with aes); *-ietf-* and aead_* are aliases.",
+          "enum": [
+            "2022-blake3-aes-128-gcm",
+            "2022-blake3-aes-256-gcm",
+            "2022-blake3-chacha20-poly1305",
+            "aes-128-gcm",
+            "aes-256-gcm",
+            "chacha20-poly1305",
+            "xchacha20-poly1305",
+            "chacha20-ietf-poly1305",
+            "xchacha20-ietf-poly1305",
+            "aead_aes_128_gcm",
+            "aead_aes_256_gcm",
+            "aead_chacha20_poly1305",
+            "aead_xchacha20_poly1305"
+          ]
+        },
+        "password": {
+          "type": "string",
+          "description": "Password, or server key for Shadowsocks 2022 (base64, \"openssl rand -base64 16|32\")."
+        },
+        "clients": {
+          "type": "array",
+          "description": "Managed by the panel; leave empty.",
+          "items": {
+            "$ref": "#/definitions/ShadowsocksClient"
+          }
+        },
+        "users": {
+          "type": "array",
+          "description": "Alias of clients. Managed by the panel; leave empty.",
+          "items": {
+            "$ref": "#/definitions/ShadowsocksClient"
+          }
+        },
+        "network": {
+          "$ref": "#/definitions/NetworkList",
+          "description": "Accepted networks.",
+          "default": "tcp"
+        },
+        "email": {
+          "type": "string",
+          "description": "User email, used in stats and logs."
+        },
+        "level": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/inbounds/shadowsocks.html"
+    },
+    "ShadowsocksOutboundSettings": {
+      "type": "object",
+      "description": "Shadowsocks outbound settings.",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Server address."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Server port."
+        },
+        "method": {
+          "type": "string",
+          "description": "Cipher. 2022-blake3-* select Shadowsocks 2022 (multi-user only with aes); *-ietf-* and aead_* are aliases.",
+          "enum": [
+            "2022-blake3-aes-128-gcm",
+            "2022-blake3-aes-256-gcm",
+            "2022-blake3-chacha20-poly1305",
+            "aes-128-gcm",
+            "aes-256-gcm",
+            "chacha20-poly1305",
+            "xchacha20-poly1305",
+            "chacha20-ietf-poly1305",
+            "xchacha20-ietf-poly1305",
+            "aead_aes_128_gcm",
+            "aead_aes_256_gcm",
+            "aead_chacha20_poly1305",
+            "aead_xchacha20_poly1305"
+          ]
+        },
+        "password": {
+          "type": "string",
+          "description": "Password or key."
+        },
+        "email": {
+          "type": "string",
+          "description": "User email, used in stats and logs."
+        },
+        "level": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "servers": {
+          "type": "array",
+          "description": "Legacy form with exactly one server; prefer the flat fields.",
+          "items": {
+            "type": "object",
+            "description": "Server.",
+            "properties": {
+              "address": {
+                "type": "string",
+                "description": "Server address."
+              },
+              "port": {
+                "type": "integer",
+                "description": "Server port."
+              },
+              "method": {
+                "type": "string",
+                "description": "Cipher. 2022-blake3-* select Shadowsocks 2022 (multi-user only with aes); *-ietf-* and aead_* are aliases.",
+                "enum": [
+                  "2022-blake3-aes-128-gcm",
+                  "2022-blake3-aes-256-gcm",
+                  "2022-blake3-chacha20-poly1305",
+                  "aes-128-gcm",
+                  "aes-256-gcm",
+                  "chacha20-poly1305",
+                  "xchacha20-poly1305",
+                  "chacha20-ietf-poly1305",
+                  "xchacha20-ietf-poly1305",
+                  "aead_aes_128_gcm",
+                  "aead_aes_256_gcm",
+                  "aead_chacha20_poly1305",
+                  "aead_xchacha20_poly1305"
+                ]
+              },
+              "password": {
+                "type": "string",
+                "description": "Password or key."
+              },
+              "email": {
+                "type": "string",
+                "description": "User email, used in stats and logs."
+              },
+              "level": {
+                "type": "integer",
+                "description": "User level (selects a policy level).",
+                "default": 0
+              }
+            }
+          },
+          "deprecated": true
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbounds/shadowsocks.html"
+    },
+    "Sniffing": {
+      "type": "object",
+      "description": "Traffic sniffing for an inbound.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable traffic sniffing.",
+          "default": false
+        },
+        "destOverride": {
+          "type": "array",
+          "description": "Protocols whose sniffed domain overrides the destination. \"https\"/\"ssl\" are aliases of \"tls\" (prefer \"tls\"); \"fakedns+others\" equals \"fakedns\".",
+          "items": {
+            "type": "string",
+            "enum": [
+              "http",
+              "tls",
+              "quic",
+              "fakedns",
+              "fakedns+others",
+              "https",
+              "ssl"
+            ]
+          },
+          "examples": [
+            [
+              "http",
+              "tls",
+              "quic"
+            ]
+          ]
+        },
+        "domainsExcluded": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Domains never overridden by sniffing (domain rule syntax).",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "courier.push.apple.com"
+            ]
+          ]
+        },
+        "ipsExcluded": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Destination IPs/CIDRs (or geoip:) for which sniffing results are ignored.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metadataOnly": {
+          "type": "boolean",
+          "description": "Only use connection metadata (e.g. fakedns); do not read payload.",
+          "default": false
+        },
+        "routeOnly": {
+          "type": "boolean",
+          "description": "Use the sniffed domain only for routing; keep the original destination address.",
+          "default": false
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/inbound.html#sniffingobject"
+    },
+    "Sockopt": {
+      "type": "object",
+      "description": "Socket options.",
+      "properties": {
+        "mark": {
+          "type": "integer",
+          "description": "SO_MARK for outgoing packets (Linux)."
+        },
+        "tcpFastOpen": {
+          "type": [
+            "boolean",
+            "integer"
+          ],
+          "description": "TCP Fast Open: true/false, or a queue length (server) / positive number."
+        },
+        "tproxy": {
+          "type": "string",
+          "description": "Transparent proxy mode (Linux inbounds); other values mean off.",
+          "enum": [
+            "off",
+            "redirect",
+            "tproxy"
+          ],
+          "default": "off"
+        },
+        "acceptProxyProtocol": {
+          "type": "boolean",
+          "description": "Accept a PROXY protocol header (inbound)."
+        },
+        "domainStrategy": {
+          "$ref": "#/definitions/DomainStrategy",
+          "description": "Resolve domains before dialing."
+        },
+        "dialerProxy": {
+          "type": "string",
+          "description": "Outbound tag to dial through (proxy chaining)."
+        },
+        "tcpKeepAliveInterval": {
+          "type": "integer",
+          "description": "TCP keep-alive interval in seconds (negative disables)."
+        },
+        "tcpKeepAliveIdle": {
+          "type": "integer",
+          "description": "TCP keep-alive idle time in seconds."
+        },
+        "tcpCongestion": {
+          "type": "string",
+          "description": "TCP congestion algorithm (Linux).",
+          "examples": [
+            "bbr",
+            "cubic",
+            "reno"
+          ]
+        },
+        "tcpWindowClamp": {
+          "type": "integer",
+          "description": "TCP window clamp."
+        },
+        "tcpMaxSeg": {
+          "type": "integer",
+          "description": "TCP max segment size."
+        },
+        "tcpUserTimeout": {
+          "type": "integer",
+          "description": "TCP user timeout in ms."
+        },
+        "tcpMptcp": {
+          "type": "boolean",
+          "description": "Enable Multipath TCP."
+        },
+        "penetrate": {
+          "type": "boolean",
+          "description": "Pass sockopt to the dialerProxy's connection."
+        },
+        "v6only": {
+          "type": "boolean",
+          "description": "Listen on IPv6 only when listening on ::."
+        },
+        "interface": {
+          "type": "string",
+          "description": "Bind to this network interface.",
+          "examples": [
+            "eth0",
+            "wg0"
+          ]
+        },
+        "customSockopt": {
+          "type": "array",
+          "description": "Raw setsockopt options.",
+          "items": {
+            "type": "object",
+            "description": "Custom setsockopt.",
+            "properties": {
+              "system": {
+                "type": "string",
+                "description": "OS this option applies to.",
+                "examples": [
+                  "linux",
+                  "windows",
+                  "darwin"
+                ]
+              },
+              "network": {
+                "type": "string",
+                "description": "Network.",
+                "examples": [
+                  "tcp",
+                  "udp"
+                ]
+              },
+              "level": {
+                "type": "string",
+                "description": "setsockopt level (number).",
+                "examples": [
+                  "6"
+                ]
+              },
+              "opt": {
+                "type": "string",
+                "description": "setsockopt option (number)."
+              },
+              "value": {
+                "type": "string",
+                "description": "Value."
+              },
+              "type": {
+                "type": "string",
+                "description": "Value type.",
+                "examples": [
+                  "int",
+                  "str"
+                ]
+              }
+            }
+          }
+        },
+        "addressPortStrategy": {
+          "type": "string",
+          "description": "Look up target address/port from SRV/TXT records (case-insensitive).",
+          "enum": [
+            "none",
+            "SrvPortOnly",
+            "SrvAddressOnly",
+            "SrvPortAndAddress",
+            "TxtPortOnly",
+            "TxtAddressOnly",
+            "TxtPortAndAddress"
+          ],
+          "default": "none"
+        },
+        "happyEyeballs": {
+          "type": "object",
+          "description": "Happy Eyeballs (RFC 8305) dialing.",
+          "properties": {
+            "prioritizeIPv6": {
+              "type": "boolean",
+              "description": "Try IPv6 first.",
+              "default": false
+            },
+            "tryDelayMs": {
+              "type": "integer",
+              "description": "Delay before the next attempt in ms.",
+              "default": 0
+            },
+            "interleave": {
+              "type": "integer",
+              "description": "Addresses of one family before switching.",
+              "default": 1
+            },
+            "maxConcurrentTry": {
+              "type": "integer",
+              "description": "Max concurrent attempts.",
+              "default": 4
+            }
+          }
+        },
+        "trustedXForwardedFor": {
+          "type": "array",
+          "description": "Headers trusted for the client IP (e.g. behind a CDN).",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "CF-Connecting-IP",
+              "X-Real-IP"
+            ]
+          ]
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/transport.html#sockoptobject"
+    },
+    "SocksInboundSettings": {
+      "type": "object",
+      "description": "SOCKS (and mixed SOCKS+HTTP) inbound settings.",
+      "properties": {
+        "auth": {
+          "type": "string",
+          "description": "Authentication; anything else means noauth.",
+          "enum": [
+            "noauth",
+            "password"
+          ],
+          "default": "noauth"
+        },
+        "accounts": {
+          "type": "array",
+          "description": "Accounts for password auth.",
+          "items": {
+            "type": "object",
+            "description": "Account.",
+            "properties": {
+              "user": {
+                "type": "string",
+                "description": "Username."
+              },
+              "pass": {
+                "type": "string",
+                "description": "Password."
+              }
+            }
+          }
+        },
+        "users": {
+          "type": "array",
+          "description": "Alias of accounts.",
+          "items": {
+            "type": "object",
+            "description": "Account.",
+            "properties": {
+              "user": {
+                "type": "string",
+                "description": "Username."
+              },
+              "pass": {
+                "type": "string",
+                "description": "Password."
+              }
+            }
+          }
+        },
+        "udp": {
+          "type": "boolean",
+          "description": "Enable UDP."
+        },
+        "ip": {
+          "type": "string",
+          "description": "Address announced for UDP associate."
+        },
+        "userLevel": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/inbounds/socks.html"
+    },
+    "SocksOutboundSettings": {
+      "type": "object",
+      "description": "SOCKS outbound settings.",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Server address."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Server port."
+        },
+        "user": {
+          "type": "string",
+          "description": "Username."
+        },
+        "pass": {
+          "type": "string",
+          "description": "Password."
+        },
+        "email": {
+          "type": "string",
+          "description": "User email, used in stats and logs."
+        },
+        "level": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "servers": {
+          "type": "array",
+          "description": "Legacy form with exactly one server; prefer the flat fields.",
+          "items": {
+            "type": "object",
+            "description": "Server.",
+            "properties": {
+              "address": {
+                "type": "string",
+                "description": "Server address."
+              },
+              "port": {
+                "type": "integer",
+                "description": "Server port."
+              },
+              "users": {
+                "type": "array",
+                "description": "At most one user.",
+                "items": {
+                  "type": "object",
+                  "description": "User.",
+                  "properties": {
+                    "user": {
+                      "type": "string",
+                      "description": "Username."
+                    },
+                    "pass": {
+                      "type": "string",
+                      "description": "Password."
+                    },
+                    "email": {
+                      "type": "string",
+                      "description": "User email, used in stats and logs."
+                    },
+                    "level": {
+                      "type": "integer",
+                      "description": "User level (selects a policy level).",
+                      "default": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "deprecated": true
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbounds/socks.html"
+    },
+    "Stats": {
+      "type": "object",
+      "description": "Enables traffic statistics (empty object; counters are enabled through policy).",
+      "properties": {},
+      "x-docs": "https://xtls.github.io/en/config/stats.html"
+    },
+    "StreamSettings": {
+      "type": "object",
+      "description": "Transport (stream) settings.",
+      "properties": {
+        "network": {
+          "type": "string",
+          "description": "Transport. Aliases: raw=tcp (prefer raw), xhttp=splithttp (prefer xhttp), kcp=mkcp, ws=websocket. Removed: h2/http/quic.",
+          "enum": [
+            "raw",
+            "tcp",
+            "xhttp",
+            "splithttp",
+            "kcp",
+            "mkcp",
+            "grpc",
+            "ws",
+            "websocket",
+            "httpupgrade",
+            "hysteria",
+            "masque",
+            "xdrive"
+          ],
+          "default": "raw"
+        },
+        "method": {
+          "type": "string",
+          "description": "Alias of network; takes precedence when set.",
+          "enum": [
+            "raw",
+            "tcp",
+            "xhttp",
+            "splithttp",
+            "kcp",
+            "mkcp",
+            "grpc",
+            "ws",
+            "websocket",
+            "httpupgrade",
+            "hysteria",
+            "masque",
+            "xdrive"
+          ]
+        },
+        "security": {
+          "type": "string",
+          "description": "Transport security.",
+          "enum": [
+            "none",
+            "tls",
+            "reality"
+          ],
+          "default": "none"
+        },
+        "tlsSettings": {
+          "$ref": "#/definitions/TlsSettings",
+          "x-show-if": {
+            "security": [
+              "tls"
+            ]
+          }
+        },
+        "realitySettings": {
+          "$ref": "#/definitions/RealitySettings",
+          "x-show-if": {
+            "security": [
+              "reality"
+            ]
+          }
+        },
+        "rawSettings": {
+          "$ref": "#/definitions/RawSettings",
+          "x-show-if": {
+            "network": [
+              "raw",
+              "tcp"
+            ]
+          }
+        },
+        "tcpSettings": {
+          "$ref": "#/definitions/RawSettings",
+          "description": "Alias of rawSettings (prefer rawSettings).",
+          "x-show-if": {
+            "network": [
+              "raw",
+              "tcp"
+            ]
+          }
+        },
+        "xhttpSettings": {
+          "$ref": "#/definitions/XhttpSettings",
+          "x-show-if": {
+            "network": [
+              "xhttp",
+              "splithttp"
+            ]
+          }
+        },
+        "splithttpSettings": {
+          "$ref": "#/definitions/XhttpSettings",
+          "description": "Alias of xhttpSettings (prefer xhttpSettings).",
+          "x-show-if": {
+            "network": [
+              "xhttp",
+              "splithttp"
+            ]
+          }
+        },
+        "kcpSettings": {
+          "$ref": "#/definitions/KcpSettings",
+          "x-show-if": {
+            "network": [
+              "kcp",
+              "mkcp"
+            ]
+          }
+        },
+        "grpcSettings": {
+          "$ref": "#/definitions/GrpcSettings",
+          "x-show-if": {
+            "network": [
+              "grpc"
+            ]
+          }
+        },
+        "wsSettings": {
+          "$ref": "#/definitions/WsSettings",
+          "x-show-if": {
+            "network": [
+              "ws",
+              "websocket"
+            ]
+          }
+        },
+        "httpupgradeSettings": {
+          "$ref": "#/definitions/HttpUpgradeSettings",
+          "x-show-if": {
+            "network": [
+              "httpupgrade"
+            ]
+          }
+        },
+        "hysteriaSettings": {
+          "$ref": "#/definitions/HysteriaTransportSettings",
+          "x-show-if": {
+            "network": [
+              "hysteria"
+            ]
+          }
+        },
+        "masqueSettings": {
+          "$ref": "#/definitions/MasqueSettings",
+          "x-show-if": {
+            "network": [
+              "masque"
+            ]
+          }
+        },
+        "xdriveSettings": {
+          "$ref": "#/definitions/XdriveSettings",
+          "x-show-if": {
+            "network": [
+              "xdrive"
+            ]
+          }
+        },
+        "finalmask": {
+          "$ref": "#/definitions/FinalMask"
+        },
+        "sockopt": {
+          "$ref": "#/definitions/Sockopt"
+        },
+        "address": {
+          "type": "string",
+          "description": "Dial this address instead of the proxy server's (mainly in xhttp downloadSettings)."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Dial this port instead of the proxy server's (mainly in xhttp downloadSettings)."
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/transport.html"
+    },
+    "TcpMask": {
+      "type": "object",
+      "description": "A TCP mask layer.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Mask type.",
+          "enum": [
+            "filter",
+            "header-custom",
+            "fragment",
+            "sudoku",
+            "xmc"
+          ]
+        }
+      },
+      "x-switch": [
+        {
+          "property": "settings",
+          "on": "type",
+          "cases": {
+            "filter": {
+              "$ref": "#/definitions/FinalMaskFilter"
+            },
+            "header-custom": {
+              "type": "object",
+              "description": "Custom TCP header.",
+              "properties": {
+                "clients": {
+                  "type": "array",
+                  "description": "Client-side sequences.",
+                  "items": {
+                    "type": "array",
+                    "description": "Sequence.",
+                    "items": {
+                      "$ref": "#/definitions/CustomTcpItem"
+                    }
+                  }
+                },
+                "servers": {
+                  "type": "array",
+                  "description": "Server-side sequences.",
+                  "items": {
+                    "type": "array",
+                    "description": "Sequence.",
+                    "items": {
+                      "$ref": "#/definitions/CustomTcpItem"
+                    }
+                  }
+                },
+                "errors": {
+                  "type": "array",
+                  "description": "Error responses.",
+                  "items": {
+                    "type": "array",
+                    "description": "Sequence.",
+                    "items": {
+                      "$ref": "#/definitions/CustomTcpItem"
+                    }
+                  }
+                }
+              }
+            },
+            "fragment": {
+              "type": "object",
+              "description": "TCP fragmentation.",
+              "properties": {
+                "packets": {
+                  "type": "string",
+                  "description": "Which packets to fragment: \"tlshello\" or a range like \"1-3\".",
+                  "examples": [
+                    "tlshello",
+                    "1-3"
+                  ]
+                },
+                "length": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Fragment length range.",
+                  "examples": [
+                    "100-200"
+                  ]
+                },
+                "delay": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Delay between fragments in ms.",
+                  "examples": [
+                    "10-20"
+                  ]
+                },
+                "lengths": {
+                  "type": "array",
+                  "description": "Per-fragment length ranges.",
+                  "items": {
+                    "type": [
+                      "integer",
+                      "string"
+                    ],
+                    "description": "Range."
+                  }
+                },
+                "delays": {
+                  "type": "array",
+                  "description": "Per-fragment delay ranges.",
+                  "items": {
+                    "type": [
+                      "integer",
+                      "string"
+                    ],
+                    "description": "Range."
+                  }
+                },
+                "maxSplit": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Max number of fragments."
+                }
+              }
+            },
+            "sudoku": {
+              "$ref": "#/definitions/FinalMaskSudoku"
+            },
+            "xmc": {
+              "type": "object",
+              "description": "XMC mask.",
+              "properties": {
+                "hostname": {
+                  "type": "string",
+                  "description": "Hostname."
+                },
+                "password": {
+                  "type": "string",
+                  "description": "Password."
+                },
+                "profiles": {
+                  "type": "array",
+                  "description": "Profiles.",
+                  "items": {
+                    "type": "object",
+                    "description": "Profile.",
+                    "properties": {
+                      "username": {
+                        "type": "string",
+                        "description": "Username."
+                      },
+                      "uuid": {
+                        "type": "string",
+                        "description": "UUID."
+                      },
+                      "texturesValue": {
+                        "type": "string",
+                        "description": "Textures value."
+                      },
+                      "texturesSignature": {
+                        "type": "string",
+                        "description": "Textures signature."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TlsSettings": {
+      "type": "object",
+      "description": "TLS settings.",
+      "properties": {
+        "serverName": {
+          "type": "string",
+          "description": "SNI to send (client) / expected server name."
+        },
+        "alpn": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "ALPN protocols (\"fromMitm\" must be alone).",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "h2",
+              "http/1.1"
+            ],
+            [
+              "h3"
+            ]
+          ]
+        },
+        "certificates": {
+          "type": "array",
+          "description": "Server certificates.",
+          "items": {
+            "$ref": "#/definitions/Certificate"
+          }
+        },
+        "fingerprint": {
+          "$ref": "#/definitions/Fingerprint"
+        },
+        "minVersion": {
+          "type": "string",
+          "description": "Minimum TLS version.",
+          "enum": [
+            "1.0",
+            "1.1",
+            "1.2",
+            "1.3"
+          ]
+        },
+        "maxVersion": {
+          "type": "string",
+          "description": "Maximum TLS version.",
+          "enum": [
+            "1.0",
+            "1.1",
+            "1.2",
+            "1.3"
+          ]
+        },
+        "cipherSuites": {
+          "type": "string",
+          "description": "Colon-separated cipher suite names (TLS 1.0-1.2)."
+        },
+        "curvePreferences": {
+          "type": [
+            "array",
+            "string"
+          ],
+          "description": "Key-exchange curves in preference order (case-insensitive; unknown names are ignored with a warning).",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "X25519MLKEM768",
+              "X25519"
+            ],
+            [
+              "CurveP256",
+              "CurveP384",
+              "CurveP521",
+              "SecP256r1MLKEM768",
+              "SecP384r1MLKEM1024"
+            ]
+          ]
+        },
+        "rejectUnknownSni": {
+          "type": "boolean",
+          "description": "Reject handshakes whose SNI matches no certificate (server)."
+        },
+        "enableSessionResumption": {
+          "type": "boolean",
+          "description": "Enable TLS session resumption."
+        },
+        "disableSystemRoot": {
+          "type": "boolean",
+          "description": "Do not trust system root CAs."
+        },
+        "useSystemCA": {
+          "type": "boolean",
+          "description": "Verify with the OS certificate store."
+        },
+        "pinnedPeerCertSha256": {
+          "type": "string",
+          "description": "Comma-separated SHA-256 hashes (hex) of trusted peer certificates."
+        },
+        "verifyPeerCertByName": {
+          "type": "string",
+          "description": "Comma-separated names to verify the peer certificate against instead of serverName."
+        },
+        "masterKeyLog": {
+          "type": "string",
+          "description": "Write TLS master keys to this file (debugging)."
+        },
+        "echServerKeys": {
+          "type": "string",
+          "description": "Base64 ECH server keys (server)."
+        },
+        "echConfigList": {
+          "type": "string",
+          "description": "ECH config list, or a DNS query spec to fetch it (client)."
+        },
+        "echSockopt": {
+          "$ref": "#/definitions/Sockopt",
+          "description": "Socket options for fetching the ECH config."
+        },
+        "allowInsecure": {
+          "type": "boolean",
+          "description": "Removed: the core rejects it; use pinnedPeerCertSha256 or verifyPeerCertByName.",
+          "deprecated": true
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/transport.html#tlsobject"
+    },
+    "TrojanClient": {
+      "type": "object",
+      "description": "Trojan user.",
+      "properties": {
+        "password": {
+          "type": "string",
+          "description": "Password."
+        },
+        "email": {
+          "type": "string",
+          "description": "User email, used in stats and logs."
+        },
+        "level": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "flow": {
+          "type": "string",
+          "description": "Removed for Trojan; must be empty.",
+          "deprecated": true
+        }
+      }
+    },
+    "TrojanInboundSettings": {
+      "type": "object",
+      "description": "Trojan inbound settings.",
+      "properties": {
+        "clients": {
+          "type": "array",
+          "description": "Managed by the panel; leave empty.",
+          "items": {
+            "$ref": "#/definitions/TrojanClient"
+          }
+        },
+        "users": {
+          "type": "array",
+          "description": "Alias of clients. Managed by the panel; leave empty.",
+          "items": {
+            "$ref": "#/definitions/TrojanClient"
+          }
+        },
+        "fallbacks": {
+          "type": "array",
+          "description": "Fallbacks.",
+          "items": {
+            "$ref": "#/definitions/Fallback"
+          }
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/inbounds/trojan.html"
+    },
+    "TrojanOutboundSettings": {
+      "type": "object",
+      "description": "Trojan outbound settings.",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Server address."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Server port."
+        },
+        "password": {
+          "type": "string",
+          "description": "Password."
+        },
+        "email": {
+          "type": "string",
+          "description": "User email, used in stats and logs."
+        },
+        "level": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "flow": {
+          "type": "string",
+          "description": "Removed for Trojan; must be empty.",
+          "deprecated": true
+        },
+        "servers": {
+          "type": "array",
+          "description": "Legacy form with exactly one server; prefer the flat fields.",
+          "items": {
+            "type": "object",
+            "description": "Server.",
+            "properties": {
+              "address": {
+                "type": "string",
+                "description": "Server address."
+              },
+              "port": {
+                "type": "integer",
+                "description": "Server port."
+              },
+              "password": {
+                "type": "string",
+                "description": "Password."
+              },
+              "email": {
+                "type": "string",
+                "description": "User email, used in stats and logs."
+              },
+              "level": {
+                "type": "integer",
+                "description": "User level (selects a policy level).",
+                "default": 0
+              },
+              "flow": {
+                "type": "string",
+                "description": "Removed for Trojan; must be empty.",
+                "deprecated": true
+              }
+            }
+          },
+          "deprecated": true
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbounds/trojan.html"
+    },
+    "TunSettings": {
+      "type": "object",
+      "description": "TUN inbound settings.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Interface name.",
+          "examples": [
+            "xray0"
+          ]
+        },
+        "desc": {
+          "type": "string",
+          "description": "Interface description."
+        },
+        "mtu": {
+          "type": "integer",
+          "description": "Interface MTU."
+        },
+        "gateway": {
+          "type": "array",
+          "description": "Interface addresses/gateways.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dns": {
+          "type": "array",
+          "description": "DNS servers.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "userLevel": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "autoSystemRoutingTable": {
+          "type": "array",
+          "description": "Routes to add to the system table automatically.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "autoOutboundsInterface": {
+          "type": "string",
+          "description": "Interface outbounds bind to (\"auto\" detects it)."
+        },
+        "autoSystemDnsToGateway": {
+          "type": "boolean",
+          "description": "Point system DNS to the gateway (Linux/FreeBSD)."
+        },
+        "autoSystemWfpBlockLeak": {
+          "type": "array",
+          "description": "Windows WFP leak blocking (e.g. \"dns\", \"udp/53\").",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/inbounds/tun.html"
+    },
+    "UdpMask": {
+      "type": "object",
+      "description": "A UDP mask layer.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Mask type.",
+          "enum": [
+            "filter",
+            "header-custom",
+            "mkcp-legacy",
+            "noise",
+            "salamander",
+            "sudoku",
+            "xdns",
+            "xicmp",
+            "realm",
+            "udphop"
+          ]
+        }
+      },
+      "x-switch": [
+        {
+          "property": "settings",
+          "on": "type",
+          "cases": {
+            "filter": {
+              "$ref": "#/definitions/FinalMaskFilter"
+            },
+            "header-custom": {
+              "type": "object",
+              "description": "Custom UDP header.",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "description": "Header mode.",
+                  "enum": [
+                    "prefix",
+                    "standalone"
+                  ],
+                  "default": "prefix"
+                },
+                "client": {
+                  "type": "array",
+                  "description": "Client items.",
+                  "items": {
+                    "$ref": "#/definitions/CustomUdpItem"
+                  }
+                },
+                "server": {
+                  "type": "array",
+                  "description": "Server items.",
+                  "items": {
+                    "$ref": "#/definitions/CustomUdpItem"
+                  }
+                }
+              }
+            },
+            "mkcp-legacy": {
+              "type": "object",
+              "description": "Legacy mKCP header/seed.",
+              "properties": {
+                "header": {
+                  "type": "string",
+                  "description": "Legacy mKCP header type (case-insensitive); empty uses value as AES-128-GCM seed.",
+                  "enum": [
+                    "dns",
+                    "dtls",
+                    "srtp",
+                    "utp",
+                    "wechat",
+                    "wireguard"
+                  ]
+                },
+                "value": {
+                  "type": "string",
+                  "description": "Seed (no header) or domain (header dns)."
+                }
+              }
+            },
+            "noise": {
+              "type": "object",
+              "description": "UDP noise.",
+              "properties": {
+                "reset": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Reset interval."
+                },
+                "noise": {
+                  "type": "array",
+                  "description": "Noise packets (not with script).",
+                  "items": {
+                    "type": "object",
+                    "description": "Noise item.",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "description": "Packet encoding; \"exp\" is a noise expression.",
+                        "enum": [
+                          "array",
+                          "str",
+                          "hex",
+                          "base64",
+                          "exp"
+                        ]
+                      },
+                      "packet": {
+                        "type": [
+                          "array",
+                          "string"
+                        ],
+                        "description": "Packet content."
+                      },
+                      "rand": {
+                        "type": [
+                          "integer",
+                          "string"
+                        ],
+                        "description": "Random length range (instead of packet)."
+                      },
+                      "randRange": {
+                        "type": [
+                          "integer",
+                          "string"
+                        ],
+                        "description": "Random byte value range (0-255)."
+                      },
+                      "delay": {
+                        "type": [
+                          "integer",
+                          "string"
+                        ],
+                        "description": "Delay in ms."
+                      }
+                    }
+                  }
+                },
+                "script": {
+                  "type": "string",
+                  "description": "Noise script (not with noise)."
+                }
+              }
+            },
+            "salamander": {
+              "type": "object",
+              "description": "Salamander obfuscation (Hysteria).",
+              "properties": {
+                "password": {
+                  "type": "string",
+                  "description": "Password."
+                },
+                "packetSize": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Packet size range."
+                }
+              }
+            },
+            "sudoku": {
+              "$ref": "#/definitions/FinalMaskSudoku"
+            },
+            "xdns": {
+              "type": "object",
+              "description": "DNS tunnel mask.",
+              "properties": {
+                "domains": {
+                  "type": "array",
+                  "description": "Tunnel domains.",
+                  "items": {
+                    "type": "object",
+                    "description": "Domain.",
+                    "properties": {
+                      "names": {
+                        "type": "array",
+                        "description": "Domains.",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lenLimit": {
+                        "type": "integer",
+                        "description": "Length limit."
+                      },
+                      "labelLimit": {
+                        "type": "integer",
+                        "description": "Label limit."
+                      },
+                      "types": {
+                        "type": "array",
+                        "description": "Query types.",
+                        "items": {
+                          "type": "integer"
+                        }
+                      },
+                      "edns0": {
+                        "type": "integer",
+                        "description": "EDNS0 size."
+                      }
+                    }
+                  }
+                },
+                "resolvers": {
+                  "type": "array",
+                  "description": "Resolvers.",
+                  "items": {
+                    "type": "object",
+                    "description": "Resolver.",
+                    "properties": {
+                      "addrs": {
+                        "type": "array",
+                        "description": "Resolver addresses (tcp/udp/https).",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "worker": {
+                        "type": "integer",
+                        "description": "Workers."
+                      },
+                      "tlsConfig": {
+                        "$ref": "#/definitions/TlsSettings"
+                      },
+                      "quicConfig": {
+                        "$ref": "#/definitions/QuicParams"
+                      }
+                    }
+                  }
+                },
+                "extraPoll": {
+                  "type": "integer",
+                  "description": "Extra polls (0-3)."
+                }
+              }
+            },
+            "xicmp": {
+              "type": "object",
+              "description": "ICMP mask.",
+              "properties": {
+                "dgram": {
+                  "type": "boolean",
+                  "description": "Use datagram ICMP sockets."
+                },
+                "ips": {
+                  "type": "array",
+                  "description": "IPs.",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "realm": {
+              "type": "object",
+              "description": "Realm NAT traversal.",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "description": "realm:// or realm+http:// URL."
+                },
+                "stunServers": {
+                  "type": "array",
+                  "description": "STUN servers (host:port).",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "tlsConfig": {
+                  "$ref": "#/definitions/TlsSettings"
+                },
+                "ipMode": {
+                  "type": "string",
+                  "description": "IP mode."
+                },
+                "portMapping": {
+                  "type": "object",
+                  "description": "Port mapping."
+                }
+              }
+            },
+            "udphop": {
+              "type": "object",
+              "description": "UDP port hopping.",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "description": "Comma-separated: intervalLocal, intervalRemote, perConnRemote (case-insensitive).",
+                  "examples": [
+                    "intervalLocal",
+                    "intervalRemote,perConnRemote"
+                  ]
+                },
+                "interval": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Hop interval in seconds (>= 5)."
+                },
+                "remoteIPs": {
+                  "type": "array",
+                  "description": "Remote IPs/CIDRs.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "remotePorts": {
+                  "$ref": "#/definitions/PortList",
+                  "description": "Remote ports."
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Version": {
+      "type": "object",
+      "description": "Version guard for the config file.",
+      "properties": {
+        "min": {
+          "type": "string",
+          "description": "Minimum Xray version required to load this config.",
+          "examples": [
+            "26.1.1"
+          ]
+        },
+        "max": {
+          "type": "string",
+          "description": "Maximum Xray version allowed to load this config."
+        }
+      }
+    },
+    "VlessClient": {
+      "type": "object",
+      "description": "VLESS user.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "UUID (or any string up to 30 bytes, mapped to a UUID)."
+        },
+        "flow": {
+          "type": "string",
+          "description": "Flow control; xtls-rprx-vision needs TLS/REALITY over RAW.",
+          "enum": [
+            "",
+            "xtls-rprx-vision"
+          ]
+        },
+        "email": {
+          "type": "string",
+          "description": "User email, used in stats and logs."
+        },
+        "level": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "testseed": {
+          "type": "array",
+          "description": "Vision padding seed (4 numbers).",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "reverse": {
+          "type": "object",
+          "description": "VLESS reverse proxy (portal side).",
+          "properties": {
+            "tag": {
+              "type": "string",
+              "description": "Tag of the reverse outbound created for this user."
+            }
+          }
+        }
+      }
+    },
+    "VlessInboundSettings": {
+      "type": "object",
+      "description": "VLESS inbound settings.",
+      "properties": {
+        "clients": {
+          "type": "array",
+          "description": "Managed by the panel; leave empty.",
+          "items": {
+            "$ref": "#/definitions/VlessClient"
+          }
+        },
+        "users": {
+          "type": "array",
+          "description": "Alias of clients. Managed by the panel; leave empty.",
+          "items": {
+            "$ref": "#/definitions/VlessClient"
+          }
+        },
+        "decryption": {
+          "type": "string",
+          "description": "\"none\", or a VLESS Encryption server string from \"xray vlessenc\".",
+          "default": "none",
+          "examples": [
+            "none",
+            "mlkem768x25519plus.native.600s.<key>"
+          ]
+        },
+        "flow": {
+          "type": "string",
+          "description": "Default flow for clients without one.",
+          "enum": [
+            "",
+            "xtls-rprx-vision"
+          ]
+        },
+        "fallbacks": {
+          "type": "array",
+          "description": "Fallbacks (not with decryption).",
+          "items": {
+            "$ref": "#/definitions/Fallback"
+          }
+        },
+        "testseed": {
+          "type": "array",
+          "description": "Default Vision padding seed.",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "required": [
+        "decryption"
+      ],
+      "x-docs": "https://xtls.github.io/en/config/inbounds/vless.html"
+    },
+    "VlessOutboundSettings": {
+      "type": "object",
+      "description": "VLESS outbound settings.",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Server address."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Server port."
+        },
+        "id": {
+          "type": "string",
+          "description": "UUID."
+        },
+        "flow": {
+          "type": "string",
+          "description": "Flow control; \"-udp443\" variant also proxies UDP/443.",
+          "enum": [
+            "",
+            "xtls-rprx-vision",
+            "xtls-rprx-vision-udp443"
+          ]
+        },
+        "encryption": {
+          "type": "string",
+          "description": "\"none\", or a VLESS Encryption client string.",
+          "default": "none",
+          "examples": [
+            "none"
+          ]
+        },
+        "email": {
+          "type": "string",
+          "description": "User email, used in stats and logs."
+        },
+        "level": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "testpre": {
+          "type": "integer",
+          "description": "Pre-connect count (testing)."
+        },
+        "testseed": {
+          "type": "array",
+          "description": "Vision padding seed.",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "reverse": {
+          "type": "object",
+          "description": "VLESS reverse proxy (bridge side).",
+          "properties": {
+            "tag": {
+              "type": "string",
+              "description": "Inbound tag for the reverse tunnel (bridge side)."
+            },
+            "sniffing": {
+              "$ref": "#/definitions/Sniffing"
+            }
+          }
+        },
+        "seed": {
+          "type": "string",
+          "description": "Not used by this version.",
+          "deprecated": true
+        },
+        "vnext": {
+          "type": "array",
+          "description": "Legacy form with exactly one server; prefer the flat address/port/id fields.",
+          "items": {
+            "type": "object",
+            "description": "Server.",
+            "properties": {
+              "address": {
+                "type": "string",
+                "description": "Server address."
+              },
+              "port": {
+                "type": "integer",
+                "description": "Server port."
+              },
+              "users": {
+                "type": "array",
+                "description": "Exactly one user.",
+                "items": {
+                  "type": "object",
+                  "description": "User.",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "UUID."
+                    },
+                    "flow": {
+                      "type": "string",
+                      "description": "Flow control; \"-udp443\" variant also proxies UDP/443.",
+                      "enum": [
+                        "",
+                        "xtls-rprx-vision",
+                        "xtls-rprx-vision-udp443"
+                      ]
+                    },
+                    "encryption": {
+                      "type": "string",
+                      "description": "\"none\", or a VLESS Encryption client string.",
+                      "default": "none",
+                      "examples": [
+                        "none"
+                      ]
+                    },
+                    "email": {
+                      "type": "string",
+                      "description": "User email, used in stats and logs."
+                    },
+                    "level": {
+                      "type": "integer",
+                      "description": "User level (selects a policy level).",
+                      "default": 0
+                    },
+                    "testpre": {
+                      "type": "integer",
+                      "description": "Pre-connect count (testing)."
+                    },
+                    "testseed": {
+                      "type": "array",
+                      "description": "Vision padding seed.",
+                      "items": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "deprecated": true
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbounds/vless.html"
+    },
+    "VmessClient": {
+      "type": "object",
+      "description": "VMess user.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "UUID."
+        },
+        "email": {
+          "type": "string",
+          "description": "User email, used in stats and logs."
+        },
+        "level": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "security": {
+          "type": "string",
+          "description": "Encryption; other values (e.g. none, zero) fall back to auto in this version.",
+          "enum": [
+            "auto",
+            "aes-128-gcm",
+            "chacha20-poly1305"
+          ],
+          "default": "auto"
+        },
+        "experiments": {
+          "type": "string",
+          "description": "Experimental features, e.g. \"AuthenticatedLength|NoTerminationSignal\"."
+        }
+      }
+    },
+    "VmessInboundSettings": {
+      "type": "object",
+      "description": "VMess inbound settings.",
+      "properties": {
+        "clients": {
+          "type": "array",
+          "description": "Managed by the panel; leave empty.",
+          "items": {
+            "$ref": "#/definitions/VmessClient"
+          }
+        },
+        "users": {
+          "type": "array",
+          "description": "Alias of clients. Managed by the panel; leave empty.",
+          "items": {
+            "$ref": "#/definitions/VmessClient"
+          }
+        },
+        "default": {
+          "type": "object",
+          "description": "Defaults for dynamically created users.",
+          "properties": {
+            "level": {
+              "type": "integer",
+              "description": "User level (selects a policy level).",
+              "default": 0
+            }
+          }
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/inbounds/vmess.html"
+    },
+    "VmessOutboundSettings": {
+      "type": "object",
+      "description": "VMess outbound settings.",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Server address."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Server port."
+        },
+        "id": {
+          "type": "string",
+          "description": "UUID."
+        },
+        "security": {
+          "type": "string",
+          "description": "Encryption; other values (e.g. none, zero) fall back to auto in this version.",
+          "enum": [
+            "auto",
+            "aes-128-gcm",
+            "chacha20-poly1305"
+          ],
+          "default": "auto"
+        },
+        "experiments": {
+          "type": "string",
+          "description": "Experimental features."
+        },
+        "email": {
+          "type": "string",
+          "description": "User email, used in stats and logs."
+        },
+        "level": {
+          "type": "integer",
+          "description": "User level (selects a policy level).",
+          "default": 0
+        },
+        "vnext": {
+          "type": "array",
+          "description": "Legacy form with exactly one server; prefer the flat fields.",
+          "items": {
+            "type": "object",
+            "description": "Server.",
+            "properties": {
+              "address": {
+                "type": "string",
+                "description": "Server address."
+              },
+              "port": {
+                "type": "integer",
+                "description": "Server port."
+              },
+              "users": {
+                "type": "array",
+                "description": "Exactly one user.",
+                "items": {
+                  "type": "object",
+                  "description": "User.",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "UUID."
+                    },
+                    "security": {
+                      "type": "string",
+                      "description": "Encryption; other values (e.g. none, zero) fall back to auto in this version.",
+                      "enum": [
+                        "auto",
+                        "aes-128-gcm",
+                        "chacha20-poly1305"
+                      ],
+                      "default": "auto"
+                    },
+                    "experiments": {
+                      "type": "string",
+                      "description": "Experimental features."
+                    },
+                    "email": {
+                      "type": "string",
+                      "description": "User email, used in stats and logs."
+                    },
+                    "level": {
+                      "type": "integer",
+                      "description": "User level (selects a policy level).",
+                      "default": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "deprecated": true
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbounds/vmess.html"
+    },
+    "WireguardSettings": {
+      "type": "object",
+      "description": "WireGuard settings.",
+      "properties": {
+        "secretKey": {
+          "type": "string",
+          "description": "Private key (base64)."
+        },
+        "address": {
+          "type": "array",
+          "description": "Local interface addresses.",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "10.0.0.2/32",
+              "fd00::2/128"
+            ]
+          ]
+        },
+        "peers": {
+          "type": "array",
+          "description": "Peers.",
+          "items": {
+            "type": "object",
+            "description": "Peer.",
+            "properties": {
+              "publicKey": {
+                "type": "string",
+                "description": "Peer public key."
+              },
+              "preSharedKey": {
+                "type": "string",
+                "description": "Pre-shared key."
+              },
+              "endpoint": {
+                "type": "string",
+                "description": "Peer endpoint host:port (client)."
+              },
+              "keepAlive": {
+                "type": "integer",
+                "description": "Keep-alive interval in seconds."
+              },
+              "allowedIPs": {
+                "type": "array",
+                "description": "Allowed IPs.",
+                "items": {
+                  "type": "string"
+                },
+                "default": [
+                  "0.0.0.0/0",
+                  "::/0"
+                ]
+              },
+              "email": {
+                "type": "string",
+                "description": "User email, used in stats and logs."
+              },
+              "level": {
+                "type": "integer",
+                "description": "User level (selects a policy level).",
+                "default": 0
+              }
+            }
+          }
+        },
+        "mtu": {
+          "type": "integer",
+          "description": "Interface MTU.",
+          "default": 1420
+        },
+        "reserved": {
+          "type": "array",
+          "description": "3 reserved bytes (e.g. for Cloudflare WARP).",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "noKernelTun": {
+          "type": "boolean",
+          "description": "Use the userspace stack instead of a kernel TUN."
+        },
+        "remoteDNS": {
+          "type": "array",
+          "description": "DNS servers used inside the tunnel.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/outbounds/wireguard.html"
+    },
+    "WsSettings": {
+      "type": "object",
+      "description": "WebSocket transport (deprecated by upstream in favour of XHTTP).",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "HTTP path; \"?ed=2560\" enables early data.",
+          "default": "/"
+        },
+        "host": {
+          "type": "string",
+          "description": "HTTP Host (client priority: host > serverName > address)."
+        },
+        "headers": {
+          "type": "object",
+          "description": "Extra HTTP headers (Host here is deprecated; use host).",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "acceptProxyProtocol": {
+          "type": "boolean",
+          "description": "Accept a PROXY protocol header (inbound only)."
+        },
+        "heartbeatPeriod": {
+          "type": "integer",
+          "description": "Ping interval in seconds (0 = off)."
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/transports/websocket.html"
+    },
+    "XdriveSettings": {
+      "type": "object",
+      "description": "XDRIVE transport (cloud-storage relay; VLESS with encryption only).",
+      "properties": {
+        "service": {
+          "type": "string",
+          "description": "Storage backend (\"Google Drive\" is a deprecated alias of google-drive).",
+          "enum": [
+            "google-drive",
+            "s3",
+            "template",
+            "local",
+            "Google Drive"
+          ]
+        },
+        "remoteFolder": {
+          "type": "string",
+          "description": "Remote folder used for the exchange."
+        },
+        "secrets": {
+          "type": "array",
+          "description": "Credentials; google-drive needs ClientID, ClientSecret, RefreshToken.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "segmentBytes": {
+          "type": "integer",
+          "description": "Segment size in bytes."
+        },
+        "flushIntervalMs": {
+          "type": "integer",
+          "description": "Flush interval in ms."
+        },
+        "pollIntervalMs": {
+          "type": "integer",
+          "description": "Poll interval in ms."
+        },
+        "maxPollIntervalMs": {
+          "type": "integer",
+          "description": "Max poll interval in ms."
+        },
+        "sessionTtlSeconds": {
+          "type": "integer",
+          "description": "Session TTL in seconds."
+        },
+        "concurrency": {
+          "type": "integer",
+          "description": "Concurrent transfers."
+        },
+        "eagerWindowMs": {
+          "type": "integer",
+          "description": "Eager window in ms."
+        },
+        "holeTimeoutMs": {
+          "type": "integer",
+          "description": "Hole timeout in ms."
+        },
+        "template": {
+          "type": "object",
+          "description": "Request template (service template)."
+        },
+        "s3": {
+          "type": "object",
+          "description": "S3 settings (service s3).",
+          "properties": {
+            "endpoint": {
+              "type": "string",
+              "description": "S3 endpoint."
+            },
+            "region": {
+              "type": "string",
+              "description": "Region."
+            },
+            "bucket": {
+              "type": "string",
+              "description": "Bucket."
+            },
+            "pathStyle": {
+              "type": "boolean",
+              "description": "Use path-style URLs.",
+              "default": true
+            }
+          }
+        },
+        "xmux": {
+          "$ref": "#/definitions/Xmux"
+        }
+      }
+    },
+    "XhttpSettings": {
+      "type": "object",
+      "description": "XHTTP (SplitHTTP) transport.",
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "HTTP Host (client priority: host > serverName > address)."
+        },
+        "path": {
+          "type": "string",
+          "description": "HTTP path.",
+          "default": "/"
+        },
+        "mode": {
+          "type": "string",
+          "description": "Upload mode.",
+          "enum": [
+            "auto",
+            "packet-up",
+            "stream-up",
+            "stream-one"
+          ],
+          "default": "auto"
+        },
+        "headers": {
+          "type": "object",
+          "description": "Extra HTTP headers (must not contain Host).",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "xPaddingBytes": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Padding size range in bytes (cannot be disabled).",
+          "examples": [
+            "100-1000"
+          ]
+        },
+        "xPaddingObfsMode": {
+          "type": "boolean",
+          "description": "Enable padding obfuscation options below."
+        },
+        "xPaddingKey": {
+          "type": "string",
+          "description": "Padding parameter name.",
+          "default": "x_padding"
+        },
+        "xPaddingHeader": {
+          "type": "string",
+          "description": "Padding header name.",
+          "default": "X-Padding"
+        },
+        "xPaddingPlacement": {
+          "type": "string",
+          "description": "Where padding is placed.",
+          "enum": [
+            "queryInHeader",
+            "cookie",
+            "header",
+            "query"
+          ],
+          "default": "queryInHeader"
+        },
+        "xPaddingMethod": {
+          "type": "string",
+          "description": "Padding generator.",
+          "enum": [
+            "repeat-x",
+            "tokenish"
+          ],
+          "default": "repeat-x"
+        },
+        "uplinkHTTPMethod": {
+          "type": "string",
+          "description": "HTTP method for uploads (GET only in packet-up).",
+          "default": "POST",
+          "examples": [
+            "POST",
+            "PUT",
+            "PATCH",
+            "GET"
+          ]
+        },
+        "sessionIDPlacement": {
+          "type": "string",
+          "description": "Where the session ID is placed.",
+          "enum": [
+            "path",
+            "cookie",
+            "header",
+            "query"
+          ],
+          "default": "path"
+        },
+        "sessionIDKey": {
+          "type": "string",
+          "description": "Session ID key when not in path."
+        },
+        "sessionIDTable": {
+          "type": "string",
+          "description": "Character table (or preset name) for generated session IDs.",
+          "examples": [
+            "hex",
+            "HEX",
+            "number",
+            "alphabet",
+            "ALPHABET",
+            "Alphabet",
+            "base36",
+            "BASE36",
+            "Base62"
+          ]
+        },
+        "sessionIDLength": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Session ID length range (with sessionIDTable)."
+        },
+        "seqPlacement": {
+          "type": "string",
+          "description": "Where the sequence number is placed.",
+          "enum": [
+            "path",
+            "cookie",
+            "header",
+            "query"
+          ],
+          "default": "path"
+        },
+        "seqKey": {
+          "type": "string",
+          "description": "Sequence key when not in path."
+        },
+        "uplinkDataPlacement": {
+          "type": "string",
+          "description": "Where upload data is placed (cookie/header only in packet-up).",
+          "enum": [
+            "auto",
+            "body",
+            "cookie",
+            "header"
+          ],
+          "default": "auto"
+        },
+        "uplinkDataKey": {
+          "type": "string",
+          "description": "Upload data key when not in body."
+        },
+        "uplinkChunkSize": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Chunk size for cookie/header uploads."
+        },
+        "noGRPCHeader": {
+          "type": "boolean",
+          "description": "Do not send the gRPC content-type header (stream-up/one)."
+        },
+        "noSSEHeader": {
+          "type": "boolean",
+          "description": "Do not send the SSE content-type header (server)."
+        },
+        "scMaxEachPostBytes": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Max bytes per upload POST (packet-up).",
+          "default": 1000000
+        },
+        "scMinPostsIntervalMs": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Min interval between upload POSTs in ms (client, packet-up).",
+          "default": 30
+        },
+        "scMaxBufferedPosts": {
+          "type": "integer",
+          "description": "Max buffered POSTs per session (server).",
+          "default": 30
+        },
+        "scStreamUpServerSecs": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Server padding interval in seconds for stream-up.",
+          "default": "20-80"
+        },
+        "serverMaxHeaderBytes": {
+          "type": "integer",
+          "description": "Max request header size on the server (0 = default)."
+        },
+        "xmux": {
+          "$ref": "#/definitions/Xmux"
+        },
+        "downloadSettings": {
+          "$ref": "#/definitions/StreamSettings",
+          "description": "Separate stream settings for the download direction (client; not in stream-one). Use address/port to dial another server."
+        },
+        "h2Params": {
+          "type": "object",
+          "description": "Low-level HTTP/2 parameters (passed through as-is)."
+        },
+        "extra": {
+          "$ref": "#/definitions/XhttpSettings",
+          "description": "Extra settings (all fields except host/path/mode); when present it replaces the outer fields."
+        }
+      },
+      "x-docs": "https://xtls.github.io/en/config/transports/xhttp.html"
+    },
+    "Xmux": {
+      "type": "object",
+      "description": "Connection multiplexing for HTTP-based transports.",
+      "properties": {
+        "maxConcurrency": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Max streams per connection (mutually exclusive with maxConnections)."
+        },
+        "maxConnections": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Max connections to open (mutually exclusive with maxConcurrency)."
+        },
+        "cMaxReuseTimes": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Max times a connection is reused."
+        },
+        "hMaxRequestTimes": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Max HTTP requests per connection."
+        },
+        "hMaxReusableSecs": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Seconds a connection stays reusable."
+        },
+        "hKeepAlivePeriod": {
+          "type": "integer",
+          "description": "HTTP keep-alive ping period in seconds (negative disables)."
+        }
+      }
+    }
+  }
+}

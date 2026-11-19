@@ -12,6 +12,10 @@ export type FilterType = {
   offset?: number;
   sort: string;
   status?: "active" | "disabled" | "limited" | "expired" | "on_hold";
+  expire_before?: number;
+  usage_percent_above?: number;
+  online_within?: number;
+  admin?: string;
 };
 export type ProtocolType = "vmess" | "vless" | "trojan" | "shadowsocks";
 
@@ -157,14 +161,14 @@ export const useDashboard = create(
       return fetch(`/user/${user.username}`, { method: "DELETE" }).then(() => {
         set({ deletingUser: null });
         get().refetchUsers();
-        queryClient.invalidateQueries(StatisticsQueryKey);
+        queryClient.invalidateQueries({ queryKey: StatisticsQueryKey });
       });
     },
     createUser: (body: UserCreate) => {
       return fetch(`/user`, { method: "POST", body }).then(() => {
         set({ editingUser: null });
         get().refetchUsers();
-        queryClient.invalidateQueries(StatisticsQueryKey);
+        queryClient.invalidateQueries({ queryKey: StatisticsQueryKey });
       });
     },
     editUser: (body: UserCreate) => {

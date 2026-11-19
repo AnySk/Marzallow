@@ -1,13 +1,15 @@
+import time
 from collections import deque
 from datetime import datetime as dt
 from enum import Enum
 from typing import Type
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from config import WEBHOOK_ADDRESS
+
 from app.models.admin import Admin
 from app.models.user import UserResponse
+from app.settings import settings as runtime_settings
 
 queue = deque()
 
@@ -28,8 +30,10 @@ class Notification(BaseModel):
         reached_usage_percent = "reached_usage_percent"
         reached_days_left = "reached_days_left"
 
-    enqueued_at: float = dt.utcnow().timestamp()
-    send_at: float = dt.utcnow().timestamp()
+    # default_factory: a plain default is evaluated once at import, which gave
+    # every notification the process start time
+    enqueued_at: float = Field(default_factory=time.time)
+    send_at: float = Field(default_factory=time.time)
     tries: int = 0
 
 
@@ -107,5 +111,5 @@ class UserSubscriptionRevoked(UserNotification):
 
 
 def notify(message: Type[Notification]) -> None:
-    if WEBHOOK_ADDRESS:
+    if runtime_settings.WEBHOOK_ADDRESS:
         queue.append(message)

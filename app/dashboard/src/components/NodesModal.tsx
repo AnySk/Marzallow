@@ -46,14 +46,14 @@ import {
   useNodesQuery,
 } from "contexts/NodesContext";
 import { FC, ReactNode, useState } from "react";
-import { Controller, useForm, UseFormReturn } from "react-hook-form";
+import { Controller, Resolver, useForm, UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
   UseMutateFunction,
   useMutation,
   useQuery,
   useQueryClient,
-} from "react-query";
+} from "@tanstack/react-query";
 import "slick-carousel/slick/slick-theme.css";
 import "slick-carousel/slick/slick.css";
 import { Status } from "types/User";
@@ -107,28 +107,27 @@ const NodeAccordion: FC<AccordionInboundType> = ({ toggleAccordion, node }) => {
   const toast = useToast();
   const form = useForm<NodeType>({
     defaultValues: node,
-    resolver: zodResolver(NodeSchema),
+    resolver: zodResolver(NodeSchema) as Resolver<NodeType>,
   });
   const handleDeleteNode = setDeletingNode.bind(null, node);
 
-  const { isLoading, mutate } = useMutation(updateNode, {
+  const { isPending: isLoading, mutate } = useMutation({
+    mutationFn: updateNode,
     onSuccess: () => {
       generateSuccessMessage("Node updated successfully", toast);
-      queryClient.invalidateQueries(FetchNodesQueryKey);
+      queryClient.invalidateQueries({ queryKey: FetchNodesQueryKey });
     },
     onError: (e) => {
       generateErrorMessage(e, toast, form);
     },
   });
 
-  const { isLoading: isReconnecting, mutate: reconnect } = useMutation(
-    reconnectNode.bind(null, node),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(FetchNodesQueryKey);
-      },
-    }
-  );
+  const { isPending: isReconnecting, mutate: reconnect } = useMutation({
+    mutationFn: reconnectNode.bind(null, node),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: FetchNodesQueryKey });
+    },
+  });
 
   const nodeStatus: Status = isReconnecting
     ? "connecting"
@@ -246,19 +245,20 @@ const AddNodeForm: FC<AddNodeFormType> = ({
   const queryClient = useQueryClient();
   const { addNode } = useNodes();
   const form = useForm<NodeType>({
-    resolver: zodResolver(NodeSchema),
+    resolver: zodResolver(NodeSchema) as Resolver<NodeType>,
     defaultValues: {
       ...getNodeDefaultValues(),
       add_as_new_host: false,
     },
   });
-  const { isLoading, mutate } = useMutation(addNode, {
+  const { isPending: isLoading, mutate } = useMutation({
+    mutationFn: addNode,
     onSuccess: () => {
       generateSuccessMessage(
         t("nodes.addNodeSuccess", { name: form.getValues("name") }),
         toast
       );
-      queryClient.invalidateQueries(FetchNodesQueryKey);
+      queryClient.invalidateQueries({ queryKey: FetchNodesQueryKey });
       form.reset();
       resetAccordions();
     },
@@ -327,7 +327,7 @@ const NodeForm: NodeFormType = ({
   const { t } = useTranslation();
   const [showCertificate, setShowCertificate] = useState(false);
   const { data: nodeSettings, isLoading: nodeSettingsLoading } = useQuery({
-    queryKey: "node-settings",
+    queryKey: ["node-settings"],
     queryFn: () =>
       fetch<{
         min_node_version: string;

@@ -3,13 +3,12 @@ import os
 import subprocess
 from pathlib import Path
 
-from app import app
+from app import app, on_startup
 from config import DEBUG, VITE_BASE_API, DASHBOARD_PATH
 from fastapi.staticfiles import StaticFiles
 
 base_dir = Path(__file__).parent
 build_dir = base_dir / 'build'
-statics_dir = build_dir / 'statics'
 
 
 def build():
@@ -39,19 +38,16 @@ def run_build():
     if not build_dir.is_dir():
         build()
 
+    # The build uses relative asset URLs, so everything (including statics/)
+    # is served below DASHBOARD_PATH; nothing at the site root reveals the panel.
     app.mount(
         DASHBOARD_PATH,
         StaticFiles(directory=build_dir, html=True),
         name="dashboard"
     )
-    app.mount(
-        '/statics/',
-        StaticFiles(directory=statics_dir, html=True),
-        name="statics"
-    )
 
 
-@app.on_event("startup")
+@on_startup
 def startup():
     if DEBUG:
         run_dev()

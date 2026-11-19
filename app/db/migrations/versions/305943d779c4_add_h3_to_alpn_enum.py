@@ -42,7 +42,22 @@ temp_table = sa.sql.table(
 )
 
 
+# On PostgreSQL the enum type was created as "proxyhostalpn" (see c106bb40c861),
+# not "alpn", and the column default blocks casting between enum types, so the
+# temp-type dance below can't work there. Add the values in place instead.
+PG_ENUM = "proxyhostalpn"
+
+
+def _is_postgres():
+    return op.get_bind().dialect.name == "postgresql"
+
+
 def upgrade():
+    if _is_postgres():
+        for value in ("h3", "h3,h2", "h3,h2,http/1.1"):
+            op.execute(f"ALTER TYPE {PG_ENUM} ADD VALUE IF NOT EXISTS '{value}'")
+        return
+
     # temp type to use instead of old one
     temp_type.create(op.get_bind(), checkfirst=False)
 
@@ -77,6 +92,11 @@ def upgrade():
 
 
 def downgrade():
+    if _is_postgres():
+        # PostgreSQL can't remove enum values; map them back and keep the type.
+        op.execute(f"UPDATE hosts SET alpn = 'none' WHERE alpn::text IN ('h3', 'h3,h2', 'h3,h2,http/1.1', '')")
+        return
+
     # old enum don't have new value anymore.
     # before downgrading from new enum to old one,
     # we should replace new value from new enum with
