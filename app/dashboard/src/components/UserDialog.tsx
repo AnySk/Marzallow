@@ -43,7 +43,13 @@ import dayjs from "dayjs";
 import { FC, useEffect, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 import ReactDatePicker from "react-datepicker";
-import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
+import {
+  Controller,
+  FormProvider,
+  Resolver,
+  useForm,
+  useWatch,
+} from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
   ProxyKeys,
@@ -229,7 +235,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>("");
   const toast = useToast();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
   const { colorMode } = useColorMode();
 
@@ -240,7 +246,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
   const form = useForm<FormType>({
     defaultValues: getDefaultValues(),
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as unknown as Resolver<FormType>,
   });
 
   useEffect(
@@ -637,7 +643,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
                               return (
                                 <>
                                   <ReactDatePicker
-                                    locale={i18n.language.toLocaleLowerCase()}
                                     dateFormat={t("dateFormat")}
                                     minDate={new Date()}
                                     selected={

@@ -6,7 +6,6 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute
 
 from config import ALLOWED_ORIGINS, DOCS, XRAY_SUBSCRIPTION_PATH
 
@@ -18,6 +17,8 @@ app = FastAPI(
     version=__version__,
     docs_url="/docs" if DOCS else None,
     redoc_url="/redoc" if DOCS else None,
+    # Use route function names as OpenAPI operation ids (e.g. "get_user").
+    generate_unique_id_function=lambda route: route.name,
 )
 
 scheduler = BackgroundScheduler(
@@ -38,18 +39,12 @@ from app.routers import api_router  # noqa
 app.include_router(api_router)
 
 
-def use_route_names_as_operation_ids(app: FastAPI) -> None:
-    for route in app.routes:
-        if isinstance(route, APIRoute):
-            route.operation_id = route.name
-
-
-use_route_names_as_operation_ids(app)
-
 
 @app.on_event("startup")
 def on_startup():
-    paths = [f"{r.path}/" for r in app.routes]
+    # Newer FastAPI keeps included routers as lazy wrappers without `.path`;
+    # those live under /api/, which is reserved explicitly below.
+    paths = [f"{r.path}/" for r in app.routes if hasattr(r, "path")]
     paths.append("/api/")
     if f"/{XRAY_SUBSCRIPTION_PATH}/" in paths:
         raise ValueError(

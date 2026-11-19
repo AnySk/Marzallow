@@ -27,7 +27,7 @@ import {
   ArrowsPointingOutIcon,
   Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
-import { joinPaths } from "@remix-run/router";
+import { joinPaths } from "utils/joinPaths";
 import classNames from "classnames";
 import { useCoreSettings } from "contexts/CoreSettingsContext";
 import { useDashboard } from "contexts/DashboardContext";

@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 import requests
-from genericpath import isdir
+from os.path import isdir
 
 # Compile proto files from github repository
 
