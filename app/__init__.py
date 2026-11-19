@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from config import ALLOWED_ORIGINS, DEBUG, DOCS, XRAY_SUBSCRIPTION_PATH
 
-__version__ = "0.8.4"
+__version__ = "0.8.5"
 
 _startup_handlers: List[Callable] = []
 _shutdown_handlers: List[Callable] = []
