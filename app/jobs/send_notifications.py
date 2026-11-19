@@ -1,3 +1,6 @@
+import urllib3
+import certifi
+import json
 import time
 from datetime import datetime as dt
 from datetime import timedelta as td
@@ -44,17 +47,37 @@ def send(data: List[Dict[Any, Any]]) -> bool:
 
 def send_req(w_address: str, data):
     try:
-        if runtime_settings.is_overridden("WEBHOOK_ADDRESS"):
-            # set from the dashboard: re-check at send time (DNS may have changed)
-            check_public_url(w_address)
         logger.debug(f"Sending {len(data)} webhook updates to {w_address}")
-        # no redirects: a public URL must not bounce the request to an internal one
+        if runtime_settings.is_overridden("WEBHOOK_ADDRESS"):
+            return _send_pinned(check_public_url(w_address), data)
+        # configured in .env by the operator (may be a local receiver)
         r = session.post(w_address, json=data, headers=_headers(), allow_redirects=False, timeout=10)
         if r.ok:
             return True
         logger.error(r)
     except Exception as err:
         logger.error(err)
+    return False
+
+
+def _send_pinned(url, data) -> bool:
+    """POST to a dashboard-set webhook at the exact IP that was validated as
+    public, so a DNS change between the check and the request can't redirect
+    it to an internal address. TLS still uses and verifies the real hostname."""
+    headers = {"Host": url.host if url.port in (80, 443) else f"{url.host}:{url.port}",
+               "Content-Type": "application/json", **(_headers() or {})}
+    if url.scheme == "https":
+        pool = urllib3.HTTPSConnectionPool(
+            url.addresses[0], url.port, server_hostname=url.host, assert_hostname=url.host,
+            cert_reqs="CERT_REQUIRED", ca_certs=certifi.where(), timeout=10, retries=False)
+    else:
+        pool = urllib3.HTTPConnectionPool(url.addresses[0], url.port, timeout=10, retries=False)
+    with pool:
+        r = pool.urlopen("POST", url.request_target, body=json.dumps(data).encode(),
+                         headers=headers, redirect=False)
+    if 200 <= r.status < 300:
+        return True
+    logger.error(f"Webhook {url.host} responded with {r.status}")
     return False
 
 

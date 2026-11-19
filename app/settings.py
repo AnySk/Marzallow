@@ -14,6 +14,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
+from urllib3.exceptions import LocationParseError
+from urllib3.util import parse_url
+
 import config
 
 
@@ -38,23 +41,49 @@ def _range(low=None, high=None):
     return check
 
 
-def check_public_url(url: str) -> None:
-    """Raise ValueError unless `url` is http(s) with a host that resolves only to
-    public addresses. Applied to webhook URLs set from the dashboard (not to
-    .env values, which may legitimately point at a local receiver) so a browser
-    session can't make the server call internal services or cloud metadata."""
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise ValueError(f"{url!r} is not an http(s) URL")
+@dataclass(frozen=True)
+class PublicUrl:
+    scheme: str
+    host: str          # hostname as written (for the Host header, SNI and certificate check)
+    port: int
+    request_target: str  # path + query
+    addresses: tuple   # validated public IPs the hostname resolved to
+
+
+def check_public_url(url: str) -> PublicUrl:
+    """Validate a webhook URL set from the dashboard and resolve it.
+
+    Raises ValueError unless it is a plain http(s) URL whose host resolves only
+    to public addresses. Applied to dashboard-set webhooks only: .env values may
+    legitimately point at a local receiver. Senders must connect to the returned
+    `addresses` (not resolve the name again) so DNS can't change in between.
+    """
+    # Parse with urllib3 - what the HTTP client uses - and reject anything
+    # that different parsers could read differently.
+    if any(c in url for c in "\\@") or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
+        raise ValueError(f"{url!r} is not a plain http(s) URL (no credentials, backslashes or spaces)")
     try:
-        infos = socket.getaddrinfo(parsed.hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
+        parsed = parse_url(url)
+    except LocationParseError:
+        raise ValueError(f"{url!r} is not an http(s) URL")
+    if parsed.scheme not in ("http", "https") or not parsed.host or parsed.auth:
+        raise ValueError(f"{url!r} is not an http(s) URL")
+    if urlparse(url).hostname != parsed.host.strip("[]").lower():
+        raise ValueError(f"{url!r} is ambiguous")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    host = parsed.host.strip("[]")
+    try:
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
     except (socket.gaierror, UnicodeError):
-        raise ValueError(f"{parsed.hostname!r} cannot be resolved")
+        raise ValueError(f"{host!r} cannot be resolved")
+    addresses = []
     for info in infos:
         address = ipaddress.ip_address(info[4][0].split("%")[0])
         if not address.is_global:
-            raise ValueError(f"{parsed.hostname!r} resolves to a non-public address; set local "
+            raise ValueError(f"{host!r} resolves to a non-public address; set local "
                              "webhooks with WEBHOOK_ADDRESS in .env instead")
+        addresses.append(str(address))
+    return PublicUrl(parsed.scheme, host, port, parsed.request_uri, tuple(dict.fromkeys(addresses)))
 
 
 def _urls(value):

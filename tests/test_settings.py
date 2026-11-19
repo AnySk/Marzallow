@@ -163,21 +163,67 @@ def test_dashboard_webhook_must_be_public(client, auth, url):
     assert "WEBHOOK_ADDRESS" in r.json()["detail"]
 
 
-def test_webhook_checked_again_at_send_time_without_redirects(client, auth, monkeypatch):
-    assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/hook"]).status_code == 200
-    job = _send_module()
+class _FakePool:
     calls = []
-    monkeypatch.setattr(job.session, "post", lambda url, **kw: calls.append((url, kw)) or type("R", (), {"ok": True})())
 
-    assert job.send_req("https://hooks.example.com/hook", [{"x": 1}]) is True
-    assert calls[0][1]["allow_redirects"] is False
+    def __init__(self, host, port, **kw):
+        self.host, self.port, self.kw = host, port, kw
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def urlopen(self, method, url, **kw):
+        _FakePool.calls.append({"ip": self.host, "port": self.port, "pool": self.kw, "path": url, **kw})
+        return type("R", (), {"status": 200})()
+
+
+def test_dashboard_webhook_sent_to_pinned_ip(client, auth, monkeypatch):
+    assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/hook?x=1"]).status_code == 200
+    job = _send_module()
+    _FakePool.calls = []
+    monkeypatch.setattr(job.urllib3, "HTTPSConnectionPool", _FakePool)
+
+    assert job.send_req("https://hooks.example.com/hook?x=1", [{"x": 1}]) is True
+    call = _FakePool.calls[0]
+    assert call["ip"] == "93.184.215.14" and call["port"] == 443   # connects to the validated IP
+    assert call["pool"]["server_hostname"] == "hooks.example.com"  # TLS still checks the real name
+    assert call["pool"]["assert_hostname"] == "hooks.example.com"
+    assert call["headers"]["Host"] == "hooks.example.com"
+    assert call["path"] == "/hook?x=1" and call["redirect"] is False
 
     FAKE_DNS["hooks.example.com"] = "127.0.0.1"  # DNS now points inside
     try:
-        assert job.send_req("https://hooks.example.com/hook", [{"x": 1}]) is False
-        assert len(calls) == 1  # nothing sent
+        assert job.send_req("https://hooks.example.com/hook?x=1", [{"x": 1}]) is False
+        assert len(_FakePool.calls) == 1  # nothing sent
     finally:
         FAKE_DNS["hooks.example.com"] = "93.184.215.14"
+
+
+@pytest.mark.parametrize("url", [
+    "https://hooks.example.com\\@127.0.0.1/",
+    "https://user:pass@hooks.example.com/",
+    "https://hooks.example.com /x",
+    "https://hooks.example.com/\x00",
+])
+def test_ambiguous_webhook_urls_rejected(client, auth, url):
+    assert _put(client, auth, WEBHOOK_ADDRESS=[url]).status_code == 400
+
+
+def test_restoring_env_secret_needs_matching_address(client, auth, monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, "WEBHOOK_SECRET", "env-secret")
+    monkeypatch.setattr(config, "WEBHOOK_ADDRESS", ["https://hooks.example.com/env"])
+    # point elsewhere with no secret (allowed: the caller chose the secret) ...
+    assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/other"], WEBHOOK_SECRET="").status_code == 200
+    # ... then bring the .env secret back without restoring the address: refused
+    r = _put(client, auth, WEBHOOK_SECRET=None)
+    assert r.status_code == 400 and "WEBHOOK_SECRET" in r.json()["detail"]
+    # restoring both to .env is the operator's own configuration
+    assert _put(client, auth, WEBHOOK_ADDRESS=None, WEBHOOK_SECRET=None).status_code == 200
 
 
 def test_env_webhook_may_be_local(monkeypatch):
@@ -197,14 +243,13 @@ def test_moving_webhook_requires_secret_again(client, auth):
     # changing only the address would send the hidden secret to the new host
     r = _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/attacker"])
     assert r.status_code == 400 and "WEBHOOK_SECRET" in r.json()["detail"]
-    # resetting the secret to the .env value in the same request isn't enough either
-    r = _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/attacker"], WEBHOOK_SECRET=None)
-    assert r.status_code == 400
     assert settings.WEBHOOK_ADDRESS == ["https://hooks.example.com/a"]
 
     # with the secret re-entered (or explicitly emptied) it's allowed
     assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/b"], WEBHOOK_SECRET="new").status_code == 200
     assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/c"], WEBHOOK_SECRET="").status_code == 200
     assert settings.WEBHOOK_SECRET == ""
+    # dropping the secret entirely (back to .env, which has none here) leaks nothing
+    assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/d"], WEBHOOK_SECRET=None).status_code == 200
     # unchanged address + other settings: no secret needed
-    assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/c"], NOTIFY_LOGIN=False).status_code == 200
+    assert _put(client, auth, WEBHOOK_ADDRESS=["https://hooks.example.com/d"], NOTIFY_LOGIN=False).status_code == 200

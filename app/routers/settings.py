@@ -68,19 +68,27 @@ def update_settings(
             coerced[key] = coerce(definition, value)
         except ValueError as err:
             errors[key] = str(err)
-    # The secret is never shown, but whoever receives the webhook gets it in a
-    # header. So moving the webhook while a secret is set requires providing the
-    # secret again (new or explicitly empty), or it would leak to the new address.
-    if "WEBHOOK_ADDRESS" in coerced and settings.WEBHOOK_SECRET:
-        restoring_env = coerced["WEBHOOK_ADDRESS"] is None and \
-            "WEBHOOK_SECRET" in coerced and coerced["WEBHOOK_SECRET"] is None
-        new_address = coerced["WEBHOOK_ADDRESS"]
-        if new_address is None:
-            new_address = settings.default("WEBHOOK_ADDRESS")
-        new_destinations = set(new_address or []) - set(settings.WEBHOOK_ADDRESS or [])
-        if new_destinations and not restoring_env and not isinstance(coerced.get("WEBHOOK_SECRET"), str):
-            errors["WEBHOOK_SECRET"] = ("enter the secret again (or leave it empty for none) "
-                                        "when changing the webhook address")
+    # The secret is never shown, but every webhook receiver gets it in a header.
+    # Unless the caller types the secret in this request, the resulting secret
+    # may only go to destinations that already received that same secret -
+    # otherwise changing the address (or restoring the .env secret while the
+    # address points elsewhere) would hand it to a new receiver.
+    if not errors and ("WEBHOOK_ADDRESS" in coerced or "WEBHOOK_SECRET" in coerced):
+        def final(key):
+            if key not in coerced:
+                return getattr(settings, key)
+            return settings.default(key) if coerced[key] is None else coerced[key]
+
+        final_address, final_secret = set(final("WEBHOOK_ADDRESS") or []), final("WEBHOOK_SECRET")
+        if final_secret and not isinstance(coerced.get("WEBHOOK_SECRET"), str):
+            paired = set()
+            if settings.WEBHOOK_SECRET == final_secret:
+                paired |= set(settings.WEBHOOK_ADDRESS or [])
+            if coerced.get("WEBHOOK_ADDRESS", 0) is None and coerced.get("WEBHOOK_SECRET", 0) is None:
+                paired |= set(settings.default("WEBHOOK_ADDRESS") or [])  # the operator's own .env pair
+            if final_address - paired:
+                errors["WEBHOOK_SECRET"] = ("enter the secret again (or leave it empty for none) "
+                                            "when changing where webhooks are sent")
     if errors:
         raise HTTPException(status_code=400, detail=errors)
 
