@@ -551,7 +551,8 @@ def reset_user_data_usage(db: Session, dbuser: User) -> User:
 
     dbuser.used_traffic = 0
     dbuser.node_usages.clear()
-    if dbuser.status not in (UserStatus.expired or UserStatus.disabled):
+    # disabled/expired users stay that way; only limited users are reactivated
+    if dbuser.status not in (UserStatus.expired, UserStatus.disabled):
         dbuser.status = UserStatus.active.value
 
     if dbuser.next_plan:
@@ -588,8 +589,9 @@ def reset_user_by_next(db: Session, dbuser: User) -> User:
     dbuser.node_usages.clear()
     dbuser.status = UserStatus.active.value
 
+    remaining = max((dbuser.data_limit or 0) - dbuser.used_traffic, 0)
     dbuser.data_limit = dbuser.next_plan.data_limit + \
-        (0 if dbuser.next_plan.add_remaining_traffic else dbuser.data_limit - dbuser.used_traffic)
+        (remaining if dbuser.next_plan.add_remaining_traffic else 0)
     dbuser.expire = dbuser.next_plan.expire
 
     dbuser.used_traffic = 0
@@ -951,7 +953,7 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
     Returns:
         Admin: The updated admin object.
     """
-    if modified_admin.is_sudo:
+    if modified_admin.is_sudo is not None:  # allow demoting a sudo admin
         dbadmin.is_sudo = modified_admin.is_sudo
     if modified_admin.password is not None and dbadmin.hashed_password != modified_admin.hashed_password:
         dbadmin.hashed_password = modified_admin.hashed_password

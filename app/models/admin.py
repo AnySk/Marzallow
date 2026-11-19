@@ -1,3 +1,4 @@
+import hmac
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
@@ -5,7 +6,7 @@ from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.db import Session, crud, get_db
-from app.utils.jwt import get_admin_payload
+from app.utils.jwt import get_admin_payload, sudoer_password_fingerprint
 from app.utils.password import hash_password, verify_password
 from config import SUDOERS
 
@@ -42,6 +43,12 @@ class Admin(BaseModel):
             return
 
         if payload['username'] in SUDOERS and payload['is_sudo'] is True:
+            # Tokens issued before SUDO_PASSWORD changed (or without a
+            # fingerprint at all) are rejected.
+            expected = sudoer_password_fingerprint(payload['username'])
+            fingerprint = payload.get('sudo_fingerprint') or ''
+            if not hmac.compare_digest(fingerprint, expected):
+                return
             return cls(username=payload['username'], is_sudo=True)
 
         dbadmin = crud.get_admin(db, payload['username'])

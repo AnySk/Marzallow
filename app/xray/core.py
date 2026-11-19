@@ -6,6 +6,7 @@ from collections import deque
 from contextlib import contextmanager
 
 from app import logger
+from app.utils.crypto import get_x25519_public_key
 from app.xray.config import XRayConfig
 from config import DEBUG
 
@@ -19,7 +20,7 @@ class XRayCore:
 
         self.version = self.get_version()
         self.process = None
-        self.restarting = False
+        self._restart_lock = threading.Lock()
 
         self._logs_buffer = deque(maxlen=100)
         self._temp_log_buffers = {}
@@ -39,48 +40,39 @@ class XRayCore:
             return m.groups()[0]
 
     def get_x25519(self, private_key: str = None):
-        cmd = [self.executable_path, "x25519"]
-        if private_key:
-            cmd.extend(['-i', private_key])
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('utf-8')
-        m = re.match(r'Private key: (.+)\nPublic key: (.+)', output)
-        if m:
-            private, public = m.groups()
-            return {
-                "private_key": private,
-                "public_key": public
-            }
+        """Generate (or derive from `private_key`) an X25519 key pair.
 
-    def __capture_process_logs(self):
-        def capture_and_debug_log():
-            while self.process:
-                output = self.process.stdout.readline()
-                if output:
-                    output = output.strip()
-                    self._logs_buffer.append(output)
-                    for buf in list(self._temp_log_buffers.values()):
-                        buf.append(output)
+        Derivation is done in Python; only key generation shells out to xray.
+        Xray has changed the `xray x25519` output labels several times
+        ("Public key:" -> "PublicKey:" -> "Password (PublicKey):"), so the
+        output is parsed by label prefix rather than exact text.
+        """
+        if private_key:
+            return {"private_key": private_key, "public_key": get_x25519_public_key(private_key)}
+
+        output = subprocess.check_output([self.executable_path, "x25519"], stderr=subprocess.STDOUT).decode('utf-8')
+        values = {}
+        for line in output.splitlines():
+            if ':' in line:
+                label, value = line.split(':', 1)
+                values[re.sub(r'[^a-z]', '', label.lower())] = value.strip()
+        private = next((v for k, v in values.items() if k.startswith('privatekey')), None)
+        if private:
+            return {"private_key": private, "public_key": get_x25519_public_key(private)}
+
+    def __capture_process_logs(self, process: subprocess.Popen):
+        # The process is passed in (not read from self.process) so a restart
+        # can't make this thread read the new process' pipe.
+        def capture():
+            for output in iter(process.stdout.readline, ''):
+                output = output.strip()
+                self._logs_buffer.append(output)
+                for buf in list(self._temp_log_buffers.values()):
+                    buf.append(output)
+                if DEBUG:
                     logger.debug(output)
 
-                elif not self.process or self.process.poll() is not None:
-                    break
-
-        def capture_only():
-            while self.process:
-                output = self.process.stdout.readline()
-                if output:
-                    output = output.strip()
-                    self._logs_buffer.append(output)
-                    for buf in list(self._temp_log_buffers.values()):
-                        buf.append(output)
-
-                elif not self.process or self.process.poll() is not None:
-                    break
-
-        if DEBUG:
-            threading.Thread(target=capture_and_debug_log).start()
-        else:
-            threading.Thread(target=capture_only).start()
+        threading.Thread(target=capture, daemon=True).start()
 
     @contextmanager
     def get_logs(self):
@@ -107,8 +99,11 @@ class XRayCore:
         if self.started is True:
             raise RuntimeError("Xray is started already")
 
-        if config.get('log', {}).get('logLevel') in ('none', 'error'):
-            config['log']['logLevel'] = 'warning'
+        # the log capture (used by the dashboard's logs view) needs warnings
+        log = config.get('log', {})
+        for key in ('loglevel', 'logLevel'):
+            if log.get(key) in ('none', 'error'):
+                log[key] = 'warning'
 
         cmd = [
             self.executable_path,
@@ -120,8 +115,10 @@ class XRayCore:
             cmd,
             env=self._env,
             stdin=subprocess.PIPE,
-            stderr=subprocess.PIPE,
             stdout=subprocess.PIPE,
+            # Merge stderr into stdout: a separate, never-read stderr pipe fills
+            # up and blocks xray once it logs enough errors.
+            stderr=subprocess.STDOUT,
             universal_newlines=True
         )
         self.process.stdin.write(config.to_json())
@@ -129,7 +126,7 @@ class XRayCore:
         self.process.stdin.close()
         logger.warning(f"Xray core {self.version} started")
 
-        self.__capture_process_logs()
+        self.__capture_process_logs(self.process)
 
         # execute on start functions
         for func in self._on_start_funcs:
@@ -139,25 +136,32 @@ class XRayCore:
         if not self.started:
             return
 
-        self.process.terminate()
-        self.process = None
+        process, self.process = self.process, None
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
         logger.warning("Xray core stopped")
 
         # execute on stop functions
         for func in self._on_stop_funcs:
             threading.Thread(target=func).start()
 
-    def restart(self, config: XRayConfig):
-        if self.restarting is True:
-            return
+    @property
+    def restarting(self) -> bool:
+        return self._restart_lock.locked()
 
+    def restart(self, config: XRayConfig):
+        if not self._restart_lock.acquire(blocking=False):
+            return  # another restart is already in progress
         try:
-            self.restarting = True
             logger.warning("Restarting Xray core...")
             self.stop()
             self.start(config)
         finally:
-            self.restarting = False
+            self._restart_lock.release()
 
     def on_start(self, func: callable):
         self._on_start_funcs.append(func)

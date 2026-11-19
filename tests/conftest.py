@@ -6,6 +6,7 @@ here before the app is imported. Xray is replaced by a stub script
 with Alembic, exactly like a real deployment.
 """
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -14,12 +15,14 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 _tmp = tempfile.mkdtemp(prefix="marzban-tests-")
+# the API can rewrite the xray config, so tests work on a copy
+shutil.copy(FIXTURES / "xray_config.json", f"{_tmp}/xray_config.json")
 
 os.environ.update({
     "SQLALCHEMY_DATABASE_URL": f"sqlite:///{_tmp}/db.sqlite3",
     "XRAY_EXECUTABLE_PATH": str(FIXTURES / "xray"),
     "XRAY_ASSETS_PATH": str(FIXTURES),
-    "XRAY_JSON": str(FIXTURES / "xray_config.json"),
+    "XRAY_JSON": f"{_tmp}/xray_config.json",
     "XRAY_SUBSCRIPTION_URL_PREFIX": "https://sub.example.com",
     "SUDO_USERNAME": "sudo",
     "SUDO_PASSWORD": "sudopass",

@@ -273,7 +273,9 @@ def process_inbounds_and_tags(
                     sni = random.choice(sni_list).replace("*", salt)
 
                 if sids := inbound.get("sids"):
-                    inbound["sid"] = random.choice(sids)
+                    # per-host copy: writing to `inbound` mutated the shared xray
+                    # config, so the first link after startup had an empty sid
+                    host_inbound["sid"] = random.choice(sids)
 
                 req_host = ""
                 req_host_list = host["host"] or inbound["host"]
@@ -315,12 +317,21 @@ def process_inbounds_and_tags(
 
                 conf.add(
                     remark=host["remark"].format_map(format_variables),
-                    address=address.format_map(format_variables),
+                    address=_format_address(address.format_map(format_variables), conf),
                     inbound=host_inbound,
                     settings=settings.model_dump()
                 )
 
     return conf.render(reverse=reverse)
+
+
+def _format_address(address: str, conf) -> str:
+    """IPv6 literals need [brackets] inside share-link URIs but must be bare in
+    formats with a separate server/address field (Clash, sing-box, Outline, Xray JSON)."""
+    bare = address[1:-1] if address.startswith('[') and address.endswith(']') else address
+    if ':' not in bare:  # hostname or IPv4
+        return address
+    return f"[{bare}]" if isinstance(conf, V2rayShareLink) else bare
 
 
 def encode_title(text: str) -> str:

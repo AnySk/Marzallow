@@ -1,15 +1,17 @@
+import threading
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from operator import attrgetter
-from typing import Union
+from typing import Dict, List, Union
 
-from pymysql.err import OperationalError
 from sqlalchemy import and_, bindparam, insert, select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.dml import Insert
 
-from app import scheduler, xray
+from app import logger, scheduler, xray
 from app.db import GetDB
 from app.db.models import Admin, NodeUsage, NodeUserUsage, System, User
 from config import (
@@ -21,28 +23,53 @@ from xray_api import XRay as XRayAPI
 from xray_api import exc as xray_exc
 
 
-def safe_execute(db: Session, stmt, params=None):
-    if db.bind.name == 'mysql':
-        if isinstance(stmt, Insert):
-            stmt = stmt.prefix_with('IGNORE')
+def _is_retryable(err: OperationalError) -> bool:
+    # SQLAlchemy wraps driver errors; inspect the original one.
+    orig = getattr(err, "orig", None)
+    code = orig.args[0] if orig is not None and orig.args else None
+    if code in (1205, 1213):  # MySQL lock wait timeout / deadlock
+        return True
+    return "database is locked" in str(orig or err)  # SQLite
 
-        tries = 0
-        done = False
-        while not done:
-            try:
-                db.connection().execute(stmt, params)
-                db.commit()
-                done = True
-            except OperationalError as err:
-                if err.args[0] == 1213 and tries < 3:  # Deadlock
-                    db.rollback()
-                    tries += 1
-                    continue
-                raise err
 
-    else:
-        db.connection().execute(stmt, params)
-        db.commit()
+def safe_execute(db: Session, stmt, params=None, retries: int = 3):
+    if db.bind.name == 'mysql' and isinstance(stmt, Insert):
+        stmt = stmt.prefix_with('IGNORE')
+
+    for attempt in range(retries + 1):
+        try:
+            db.connection().execute(stmt, params)
+            db.commit()
+            return
+        except OperationalError as err:
+            db.rollback()
+            if attempt == retries or not _is_retryable(err):
+                raise
+            time.sleep(0.1 * 2 ** attempt)
+
+
+# Usage read from xray (with reset) but not yet stored, e.g. because the
+# database was unavailable. It is added to the next run instead of being lost.
+_pending_lock = threading.Lock()
+_pending_user_usage: Dict[Union[int, None], Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+
+
+def _merge_pending(api_params: Dict[Union[int, None], List[dict]]) -> Dict[Union[int, None], List[dict]]:
+    with _pending_lock:
+        for node_id, pending in _pending_user_usage.items():
+            merged = defaultdict(int, pending)
+            for p in api_params.get(node_id, []):
+                merged[p["uid"]] += p["value"]
+            api_params[node_id] = [{"uid": uid, "value": value} for uid, value in merged.items()]
+        _pending_user_usage.clear()
+    return api_params
+
+
+def _keep_pending(api_params: Dict[Union[int, None], List[dict]]) -> None:
+    with _pending_lock:
+        for node_id, params in api_params.items():
+            for p in params:
+                _pending_user_usage[node_id][p["uid"]] += p["value"]
 
 
 def record_user_stats(params: list, node_id: Union[int, None],
@@ -138,8 +165,34 @@ def record_user_usages():
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {node_id: executor.submit(get_users_stats, api) for node_id, api in api_instances.items()}
-    api_params = {node_id: future.result() for node_id, future in futures.items()}
+    api_params = {}
+    for node_id, future in futures.items():
+        try:
+            api_params[node_id] = future.result()
+        except Exception as err:  # one bad node must not abort the whole run
+            logger.warning(f"Failed to read user stats from node {node_id}: {err}")
+            api_params[node_id] = []
+    api_params = _merge_pending(api_params)
 
+    try:
+        _store_user_usages(api_params, usage_coefficient)
+    except Exception:
+        _keep_pending(api_params)
+        logger.exception("Failed to record user usages; they will be retried on the next run")
+        return
+
+    if DISABLE_RECORDING_NODE_USAGE:
+        return
+    # Per-node history is best-effort: user totals are already committed, so a
+    # failure here must not re-queue the usage (that would double count it).
+    for node_id, params in api_params.items():
+        try:
+            record_user_stats(params, node_id, usage_coefficient.get(node_id, 1))
+        except Exception:
+            logger.exception(f"Failed to record per-node user usage for node {node_id}")
+
+
+def _store_user_usages(api_params, usage_coefficient):
     users_usage = defaultdict(int)
     for node_id, params in api_params.items():
         coefficient = usage_coefficient.get(node_id, 1)  # get the usage coefficient for the node
@@ -174,13 +227,11 @@ def record_user_usages():
             admin_update_stmt = update(Admin). \
                 where(Admin.id == bindparam('admin_id')). \
                 values(users_usage=Admin.users_usage + bindparam('value'))
-            safe_execute(db, admin_update_stmt, admin_data)
-
-    if DISABLE_RECORDING_NODE_USAGE:
-        return
-
-    for node_id, params in api_params.items():
-        record_user_stats(params, node_id, usage_coefficient[node_id])
+            try:
+                safe_execute(db, admin_update_stmt, admin_data)
+            except Exception:
+                # user totals are already committed; re-queueing would double count them
+                logger.exception("Failed to record admin usage totals")
 
 
 def record_node_usages():

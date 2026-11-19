@@ -326,7 +326,9 @@ class V2rayShareLink(str):
                 extra["keepAlivePeriod"] = keepAlivePeriod
             if xmux:
                 extra["xmux"] = xmux
-            payload["extra"] = json.dumps(extra)
+            # compact JSON: urlencode turns spaces into '+', which clients
+            # then fail to parse as JSON
+            payload["extra"] = json.dumps(extra, separators=(',', ':'))
 
         elif net == 'kcp':
             payload['seed'] = path
@@ -430,7 +432,9 @@ class V2rayShareLink(str):
                 extra["keepAlivePeriod"] = keepAlivePeriod
             if xmux:
                 extra["xmux"] = xmux
-            payload["extra"] = json.dumps(extra)
+            # compact JSON: urlencode turns spaces into '+', which clients
+            # then fail to parse as JSON
+            payload["extra"] = json.dumps(extra, separators=(',', ':'))
 
         elif net == 'quic':
             payload['key'] = path
@@ -611,6 +615,7 @@ class V2rayJsonConfig(str):
         if host:
             config["host"] = host
         if random_user_agent:
+            config.setdefault("headers", {})
             config["headers"]["User-Agent"] = choice(
                 self.user_agent_list)
         config.setdefault("scMaxEachPostBytes", sc_max_each_post_bytes)
@@ -720,6 +725,7 @@ class V2rayJsonConfig(str):
         else:
             config["host"] = []
         if random_user_agent:
+            config.setdefault("headers", {})
             config["headers"]["User-Agent"] = [
                 choice(self.user_agent_list)]
 

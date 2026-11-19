@@ -1,3 +1,4 @@
+import hmac
 from typing import Optional, Union
 from app.models.admin import AdminInDB, AdminValidationResult, Admin
 from app.models.user import UserResponse, UserStatus
@@ -10,7 +11,8 @@ from app.utils.jwt import get_subscription_payload
 
 def validate_admin(db: Session, username: str, password: str) -> Optional[AdminValidationResult]:
     """Validate admin credentials with environment variables or database."""
-    if SUDOERS.get(username) == password:
+    sudo_password = SUDOERS.get(username)
+    if sudo_password is not None and hmac.compare_digest(sudo_password.encode(), password.encode()):
         return AdminValidationResult(username=username, is_sudo=True)
 
     dbadmin = crud.get_admin(db, username)

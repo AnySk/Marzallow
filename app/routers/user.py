@@ -280,7 +280,9 @@ def active_next_plan(
     """Reset user by next plan"""
     dbuser = crud.reset_user_by_next(db=db, dbuser=dbuser)
 
-    if (dbuser is None or dbuser.next_plan is None):
+    # reset_user_by_next returns None when there is no plan; on success it has
+    # already consumed (cleared) next_plan, so don't check that here.
+    if dbuser is None:
         raise HTTPException(
             status_code=404,
             detail=f"User doesn't have next plan",

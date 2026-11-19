@@ -10,16 +10,22 @@ from app.dependencies import get_admin_by_username, validate_admin
 from app.models.admin import Admin, AdminCreate, AdminModify, Token
 from app.utils import report, responses
 from app.utils.jwt import create_admin_token
-from config import LOGIN_NOTIFY_WHITE_LIST
+from app.utils.ratelimit import LoginRateLimiter
+from config import LOGIN_LOCKOUT_SECONDS, LOGIN_MAX_FAILED_ATTEMPTS, LOGIN_NOTIFY_WHITE_LIST
 
 router = APIRouter(tags=["Admin"], prefix="/api", responses={401: responses._401})
 
 
+login_limiter = LoginRateLimiter(LOGIN_MAX_FAILED_ATTEMPTS, LOGIN_LOCKOUT_SECONDS)
+
+
 def get_client_ip(request: Request) -> str:
-    """Extract the client's IP address from the request headers or client."""
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
+    """The client's IP address.
+
+    Uvicorn already resolves X-Forwarded-For, but only for proxies listed in
+    FORWARDED_ALLOW_IPS (default 127.0.0.1). Reading the header here directly
+    would let any client spoof its IP.
+    """
     if request.client:
         return request.client.host
     return "Unknown"
@@ -34,15 +40,29 @@ def admin_token(
     """Authenticate an admin and issue a token."""
     client_ip = get_client_ip(request)
 
+    retry_after = login_limiter.retry_after(client_ip)
+    if retry_after:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts, try again later",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     dbadmin = validate_admin(db, form_data.username, form_data.password)
     if not dbadmin:
-        report.login(form_data.username, form_data.password, client_ip, False)
+        failures = login_limiter.record_failure(client_ip)
+        # Notify on the first failure from an IP and when it gets locked out,
+        # not on every attempt (brute-force bots otherwise flood the channel).
+        # Never forward the attempted password.
+        if failures <= 1 or failures == LOGIN_MAX_FAILED_ATTEMPTS:
+            report.login(form_data.username, "🔒", client_ip, False)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    login_limiter.reset(client_ip)
     if client_ip not in LOGIN_NOTIFY_WHITE_LIST:
         report.login(form_data.username, "🔒", client_ip, True)
 

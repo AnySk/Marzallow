@@ -1,3 +1,5 @@
+import threading
+import time
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -56,6 +58,19 @@ def _alter_inbound_user(api: XRayAPI, inbound_tag: str, account: Account):
         pass
 
 
+def _strip_unsupported_flow(account: Account, inbound: dict) -> None:
+    """XTLS flows only work over TCP ("raw" in newer xray) or mKCP with TLS/REALITY."""
+    if not getattr(account, 'flow', None):
+        return
+    network = inbound.get('network', 'tcp')
+    if (
+        network not in ('tcp', 'raw', 'kcp')
+        or inbound.get('tls') not in ('tls', 'reality')
+        or inbound.get('header_type') == 'http'
+    ):
+        account.flow = XTLSFlows.NONE
+
+
 def add_user(dbuser: "DBUser"):
     user = UserResponse.model_validate(dbuser)
     email = f"{dbuser.id}.{dbuser.username}"
@@ -67,22 +82,10 @@ def add_user(dbuser: "DBUser"):
             try:
                 proxy_settings = user.proxies[proxy_type].dict(no_obj=True)
             except KeyError:
-                pass
+                continue  # no settings for this protocol; don't reuse another protocol's
             account = proxy_type.account_model(email=email, **proxy_settings)
 
-            # XTLS currently only supports transmission methods of TCP and mKCP
-            if getattr(account, 'flow', None) and (
-                inbound.get('network', 'tcp') not in ('tcp', 'kcp')
-                or
-                (
-                    inbound.get('network', 'tcp') in ('tcp', 'kcp')
-                    and
-                    inbound.get('tls') not in ('tls', 'reality')
-                )
-                or
-                inbound.get('header_type') == 'http'
-            ):
-                account.flow = XTLSFlows.NONE
+            _strip_unsupported_flow(account, inbound)
 
             _add_user_to_inbound(xray.api, inbound_tag, account)  # main core
             for node in list(xray.nodes.values()):
@@ -113,22 +116,10 @@ def update_user(dbuser: "DBUser"):
             try:
                 proxy_settings = user.proxies[proxy_type].dict(no_obj=True)
             except KeyError:
-                pass
+                continue  # no settings for this protocol; don't reuse another protocol's
             account = proxy_type.account_model(email=email, **proxy_settings)
 
-            # XTLS currently only supports transmission methods of TCP and mKCP
-            if getattr(account, 'flow', None) and (
-                inbound.get('network', 'tcp') not in ('tcp', 'kcp')
-                or
-                (
-                    inbound.get('network', 'tcp') in ('tcp', 'kcp')
-                    and
-                    inbound.get('tls') not in ('tls', 'reality')
-                )
-                or
-                inbound.get('header_type') == 'http'
-            ):
-                account.flow = XTLSFlows.NONE
+            _strip_unsupported_flow(account, inbound)
 
             _alter_inbound_user(xray.api, inbound_tag, account)  # main core
             for node in list(xray.nodes.values()):
@@ -188,21 +179,29 @@ def _change_node_status(node_id: int, status: NodeStatus, message: str = None, v
             db.rollback()
 
 
-global _connecting_nodes
-_connecting_nodes = {}
+_connecting_nodes: dict = {}  # node_id -> monotonic start time of the attempt
+_connecting_lock = threading.Lock()
+# A connect attempt that hangs (e.g. a node that never answers) must not block
+# reconnects forever.
+CONNECT_ATTEMPT_TIMEOUT = 120
 
 
 @threaded_function
 def connect_node(node_id, config=None):
-    global _connecting_nodes
-
-    if _connecting_nodes.get(node_id):
-        return
+    with _connecting_lock:
+        started = _connecting_nodes.get(node_id)
+        if started and time.monotonic() - started < CONNECT_ATTEMPT_TIMEOUT:
+            return
+        if started:
+            logger.warning(f"Previous connection attempt to node {node_id} timed out, retrying")
+        _connecting_nodes[node_id] = time.monotonic()
 
     with GetDB() as db:
         dbnode = crud.get_node_by_id(db, node_id)
 
     if not dbnode:
+        with _connecting_lock:
+            _connecting_nodes.pop(node_id, None)
         return
 
     try:
@@ -212,8 +211,6 @@ def connect_node(node_id, config=None):
         node = xray.operations.add_node(dbnode)
 
     try:
-        _connecting_nodes[node_id] = True
-
         _change_node_status(node_id, NodeStatus.connecting)
         logger.info(f"Connecting to \"{dbnode.name}\" node")
 
@@ -230,10 +227,8 @@ def connect_node(node_id, config=None):
         logger.info(f"Unable to connect to \"{dbnode.name}\" node")
 
     finally:
-        try:
-            del _connecting_nodes[node_id]
-        except KeyError:
-            pass
+        with _connecting_lock:
+            _connecting_nodes.pop(node_id, None)
 
 
 @threaded_function

@@ -291,6 +291,7 @@ class UserResponse(User):
     created_at: datetime
     links: List[str] = []
     subscription_url: str = ""
+    sub_revoked_at: Optional[datetime] = Field(None, exclude=True)
     proxies: dict
     excluded_inbounds: Dict[ProxyTypes, List[str]] = {}
 
@@ -310,7 +311,9 @@ class UserResponse(User):
         if not self.subscription_url:
             salt = secrets.token_hex(8)
             url_prefix = (XRAY_SUBSCRIPTION_URL_PREFIX).replace('*', salt)
-            token = create_subscription_token(self.username)
+            # Stable link: derived from creation / last revocation, not "now"
+            issued_at = max(t for t in (self.created_at, self.sub_revoked_at) if t)
+            token = create_subscription_token(self.username, issued_at)
             self.subscription_url = f"{url_prefix}/{XRAY_SUBSCRIPTION_PATH}/{token}"
         return self
 

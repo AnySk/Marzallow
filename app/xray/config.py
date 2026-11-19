@@ -13,7 +13,7 @@ from app.db import GetDB
 from app.db import models as db_models
 from app.models.proxy import ProxyTypes
 from app.models.user import UserStatus
-from app.utils.crypto import get_cert_SANs
+from app.utils.crypto import get_cert_SANs, get_x25519_public_key
 from config import DEBUG, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
 
 
@@ -65,7 +65,6 @@ class XRayConfig(dict):
         api_inbound = self.get_inbound("API_INBOUND")
         if api_inbound:
             api_inbound["listen"] = self.api_host
-            api_inbound["listen"]["address"] = self.api_host
             api_inbound["port"] = self.api_port
             return
 
@@ -213,28 +212,22 @@ class XRayConfig(dict):
                             settings['sni'].extend(get_cert_SANs(cert))
 
                 elif security == 'reality':
-                    settings['fp'] = 'chrome'
+                    # "fingerprint" isn't a server-side setting, but if present use it for client links
+                    settings['fp'] = tls_settings.get('fingerprint') or 'chrome'
                     settings['tls'] = 'reality'
                     settings['sni'] = tls_settings.get('serverNames', [])
 
-                    try:
-                        settings['pbk'] = tls_settings['publicKey']
-                    except KeyError:
+                    # Xray 26 calls the public key "password"; older configs use "publicKey".
+                    settings['pbk'] = tls_settings.get('publicKey') or tls_settings.get('password')
+                    if not settings['pbk']:
                         pvk = tls_settings.get('privateKey')
                         if not pvk:
                             raise ValueError(
                                 f"You need to provide privateKey in realitySettings of {inbound['tag']}")
-
                         try:
-                            from app.xray import core
-                            x25519 = core.get_x25519(pvk)
-                            settings['pbk'] = x25519['public_key']
-                        except ImportError:
-                            pass
-
-                        if not settings.get('pbk'):
-                            raise ValueError(
-                                f"You need to provide publicKey in realitySettings of {inbound['tag']}")
+                            settings['pbk'] = get_x25519_public_key(pvk)
+                        except ValueError:
+                            raise ValueError(f"Invalid privateKey in realitySettings of {inbound['tag']}")
 
                     try:
                         settings['sids'] = tls_settings.get('shortIds')
@@ -243,8 +236,8 @@ class XRayConfig(dict):
                         raise ValueError(
                             f"You need to define at least one shortID in realitySettings of {inbound['tag']}")
                     try:
-                        settings['spx'] = tls_settings.get('SpiderX')
-                    except:
+                        settings['spx'] = tls_settings.get('spiderX') or tls_settings.get('SpiderX') or ""
+                    except Exception:
                         settings['spx'] = ""
 
                 if net in ('tcp', 'raw'):
