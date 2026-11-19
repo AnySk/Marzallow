@@ -139,7 +139,24 @@ class XRayConfig(dict):
             if not outbound.get("tag"):
                 raise ValueError("all outbounds must have a unique tag")
 
+    def _fallback_parents(self) -> dict:
+        """Map "@name" fallback destinations to the inbound that falls back to them.
+
+        Covers settings.fallbacks[].dest and REALITY's own target/dest (used to
+        chain e.g. VLESS-TCP-REALITY -> VLESS-XHTTP-REALITY on one port).
+        """
+        parents = {}
+        for inbound in self['inbounds']:
+            dests = [fb.get('dest') for fb in inbound.get('settings', {}).get('fallbacks', []) or []]
+            reality = inbound.get('streamSettings', {}).get('realitySettings', {}) or {}
+            dests += [reality.get('target'), reality.get('dest')]
+            for dest in dests:
+                if isinstance(dest, str) and dest.startswith('@'):
+                    parents.setdefault(dest, inbound)
+        return parents
+
     def _resolve_inbounds(self):
+        fallback_parents = self._fallback_parents()
         for inbound in self['inbounds']:
             if not inbound['protocol'] in ProxyTypes._value2member_map_:
                 continue
@@ -165,13 +182,19 @@ class XRayConfig(dict):
                 "is_fallback": False
             }
 
-            # port settings
+            # port settings: an inbound without a port is reached through a
+            # fallback; its parent is the inbound whose fallback targets its
+            # "@listen" socket, else XRAY_FALLBACKS_INBOUND_TAG
+            parent = None
             try:
                 settings['port'] = inbound['port']
             except KeyError:
-                if self._fallbacks_inbound:
+                listen = inbound.get('listen')
+                parent = fallback_parents.get(listen) if isinstance(listen, str) else None
+                parent = parent or self._fallbacks_inbound
+                if parent:
                     try:
-                        settings['port'] = self._fallbacks_inbound['port']
+                        settings['port'] = parent['port']
                         settings['is_fallback'] = True
                     except KeyError:
                         raise ValueError("fallbacks inbound doesn't have port")
@@ -183,12 +206,12 @@ class XRayConfig(dict):
                 security = stream.get("security")
                 tls_settings = stream.get(f"{security}Settings")
 
-                if settings['is_fallback'] is True:
-                    # probably this is a fallback
-                    security = self._fallbacks_inbound.get(
-                        'streamSettings', {}).get('security')
-                    tls_settings = self._fallbacks_inbound.get(
-                        'streamSettings', {}).get(f"{security}Settings", {})
+                if settings['is_fallback'] is True and security in (None, 'none'):
+                    # clients reach a fallback inbound through its parent, so use
+                    # the parent's TLS/REALITY settings - unless the inbound has
+                    # its own (e.g. REALITY behind REALITY with different keys)
+                    security = parent.get('streamSettings', {}).get('security')
+                    tls_settings = parent.get('streamSettings', {}).get(f"{security}Settings", {})
 
                 settings['network'] = net
 

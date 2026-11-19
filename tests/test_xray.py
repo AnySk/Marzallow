@@ -77,3 +77,61 @@ def test_reality_fingerprint_from_config():
 def test_reality_requires_a_key():
     with pytest.raises(ValueError, match="privateKey"):
         XRayConfig(_reality_config(), api_port=10085)
+
+
+# --- fallbacks (upstream #1963, #1987) -----------------------------------------
+
+OTHER_PRIVATE = _b64(bytes(range(1, 33)))
+
+
+def _fallback_config():
+    return {
+        "inbounds": [
+            {   # REALITY on 443: falls back to a ws inbound and (for non-REALITY
+                # clients) hands off to an inner REALITY inbound with its own keys
+                "tag": "OUTER", "port": 443, "protocol": "vless",
+                "settings": {"clients": [], "decryption": "none", "fallbacks": [{"path": "/ws", "dest": "@ws"}]},
+                "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {
+                    "target": "@inner", "serverNames": ["a.example"], "privateKey": RFC_PRIVATE, "shortIds": ["aa"]}},
+            },
+            {   # plain TLS on 8443 with its own fallback
+                "tag": "TLS-PARENT", "port": 8443, "protocol": "trojan",
+                "settings": {"clients": [], "fallbacks": [{"dest": "@grpc"}]},
+                "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": {}},
+            },
+            {"tag": "WS-CHILD", "listen": "@ws", "protocol": "vmess", "settings": {"clients": []},
+             "streamSettings": {"network": "ws", "wsSettings": {"path": "/ws"}}},
+            {"tag": "GRPC-CHILD", "listen": "@grpc", "protocol": "vless", "settings": {"clients": []},
+             "streamSettings": {"network": "grpc", "grpcSettings": {"serviceName": "g"}}},
+            {"tag": "INNER", "listen": "@inner", "protocol": "vless", "settings": {"clients": []},
+             "streamSettings": {"network": "xhttp", "security": "reality", "realitySettings": {
+                 "serverNames": ["b.example"], "privateKey": OTHER_PRIVATE, "shortIds": ["bb"]}}},
+        ],
+        "outbounds": [{"protocol": "freedom", "tag": "DIRECT"}],
+    }
+
+
+def test_fallback_children_inherit_from_their_own_parent():
+    inbounds = XRayConfig(_fallback_config(), api_port=10085).inbounds_by_tag
+    ws, grpc = inbounds["WS-CHILD"], inbounds["GRPC-CHILD"]
+    assert (ws["port"], ws["tls"], ws["pbk"], ws["sni"]) == (443, "reality", RFC_PUBLIC, ["a.example"])
+    assert (grpc["port"], grpc["tls"]) == (8443, "tls")
+    assert ws["is_fallback"] and grpc["is_fallback"]
+
+
+def test_reality_behind_reality_keeps_its_own_keys():
+    inner = XRayConfig(_fallback_config(), api_port=10085).inbounds_by_tag["INNER"]
+    assert inner["port"] == 443
+    assert inner["pbk"] == get_x25519_public_key(OTHER_PRIVATE) != RFC_PUBLIC
+    assert inner["sni"] == ["b.example"] and inner["sids"] == ["bb"]
+
+
+def test_global_fallback_inbound_still_supported(monkeypatch):
+    import sys
+
+    # `app.xray.config` the attribute is the loaded XRayConfig; patch the module
+    monkeypatch.setattr(sys.modules["app.xray.config"], "XRAY_FALLBACKS_INBOUND_TAG", "TLS-PARENT")
+    config = _fallback_config()
+    config["inbounds"][2]["listen"] = "127.0.0.1"  # no @socket match -> global fallback
+    ws = XRayConfig(config, api_port=10085).inbounds_by_tag["WS-CHILD"]
+    assert (ws["port"], ws["tls"]) == (8443, "tls")

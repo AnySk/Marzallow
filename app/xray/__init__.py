@@ -8,21 +8,23 @@ from app.xray import operations
 from app.xray.config import XRayConfig
 from app.xray.core import XRayCore
 from app.xray.node import XRayNode
-from config import XRAY_ASSETS_PATH, XRAY_EXECUTABLE_PATH, XRAY_JSON
+from config import XRAY_API_PORT, XRAY_ASSETS_PATH, XRAY_EXECUTABLE_PATH, XRAY_JSON
 from xray_api import XRay as XRayAPI
 from xray_api import exceptions, types
 from xray_api import exceptions as exc
 
 core = XRayCore(XRAY_EXECUTABLE_PATH, XRAY_ASSETS_PATH)
 
-# Search for a free API port
-try:
-    for api_port in range(randint(10000, 60000), 65536):
-        if not check_port(api_port):
-            break
-finally:
-    config = XRayConfig(XRAY_JSON, api_port=api_port)
-    del api_port
+def _pick_api_port() -> int:
+    if XRAY_API_PORT:
+        return XRAY_API_PORT  # fixed port, e.g. to use xray's API from other tools
+    for port in range(randint(10000, 60000), 65536):
+        if not check_port(port):
+            return port
+    raise RuntimeError("No free port for the xray API")
+
+
+config = XRayConfig(XRAY_JSON, api_port=_pick_api_port())
 
 api = XRayAPI(config.api_host, config.api_port)
 

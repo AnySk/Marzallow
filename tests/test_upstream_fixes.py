@@ -65,48 +65,78 @@ def test_resetting_usage_does_not_reactivate_disabled_user(client, auth, make_us
 
 # --- #2012: login brute force ----------------------------------------------
 
-def test_login_rate_limit_and_no_password_in_notifications(client, monkeypatch):
+@pytest.fixture
+def limiters(monkeypatch):
     from app.routers import admin as admin_router
     from app.utils.ratelimit import LoginRateLimiter
 
-    monkeypatch.setattr(admin_router, "login_limiter", LoginRateLimiter(3, 60))
+    per_account, per_ip = LoginRateLimiter(3, 60), LoginRateLimiter(8, 60)
+    monkeypatch.setattr(admin_router, "login_limiter", per_account)
+    monkeypatch.setattr(admin_router, "ip_login_limiter", per_ip)
     monkeypatch.setattr(admin_router, "LOGIN_MAX_FAILED_ATTEMPTS", 3)
+    return per_account, per_ip
+
+
+def _login(client, username, password, **kw):
+    return client.post("/api/admin/token", data={"username": username, "password": password}, **kw)
+
+
+def test_login_rate_limit_and_no_password_in_notifications(client, limiters, monkeypatch):
+    from app.routers import admin as admin_router
+
     reported = []
     monkeypatch.setattr(admin_router.report, "login", lambda *args: reported.append(args))
-
     for _ in range(3):
-        assert client.post("/api/admin/token", data={"username": "sudo", "password": "wrong-secret"}).status_code == 401
-    r = client.post("/api/admin/token", data={"username": "sudo", "password": "sudopass"})
+        assert _login(client, "sudo", "wrong-secret").status_code == 401
+    r = _login(client, "sudo", "sudopass")
     assert r.status_code == 429
     assert int(r.headers["retry-after"]) > 0
-
     # notified on the first failure and on lockout only, never with the password
     assert len(reported) == 2
     assert all("wrong-secret" not in map(str, args) for args in reported)
 
 
-def test_spoofed_forwarded_for_is_ignored(client, monkeypatch):
-    from app.routers import admin as admin_router
-    from app.utils.ratelimit import LoginRateLimiter
-
-    limiter = LoginRateLimiter(2, 60)
-    monkeypatch.setattr(admin_router, "login_limiter", limiter)
-    for i in range(2):  # rotating X-Forwarded-For must not evade the limit
-        client.post("/api/admin/token", data={"username": "x", "password": "y"},
-                    headers={"X-Forwarded-For": f"10.0.0.{i}"})
-    assert limiter.retry_after("testclient|x") > 0
+def test_spoofed_forwarded_for_is_ignored(client, limiters):
+    per_account, _ = limiters
+    for i in range(3):  # rotating X-Forwarded-For must not evade the limit over TCP
+        _login(client, "x", "y", headers={"X-Forwarded-For": f"10.0.0.{i}"})
+    assert per_account.retry_after("testclient|name:x") > 0
 
 
-def test_lockout_is_per_username(client, monkeypatch):
-    from app.routers import admin as admin_router
-    from app.utils.ratelimit import LoginRateLimiter
+def test_lockout_is_per_account(client, limiters):
+    for _ in range(3):
+        _login(client, "attacker-target", "nope")
+    assert _login(client, "attacker-target", "x").status_code == 429
+    assert _login(client, "sudo", "sudopass").status_code == 200  # other accounts unaffected
 
-    monkeypatch.setattr(admin_router, "login_limiter", LoginRateLimiter(2, 60))
-    for _ in range(2):
-        client.post("/api/admin/token", data={"username": "attacker-target", "password": "nope"})
-    assert client.post("/api/admin/token", data={"username": "attacker-target", "password": "x"}).status_code == 429
-    # other accounts from the same client are unaffected
-    assert client.post("/api/admin/token", data={"username": "sudo", "password": "sudopass"}).status_code == 200
+
+def test_username_variants_share_a_lockout(client, auth, limiters):
+    client.post("/api/admin", headers=auth, json={"username": "ops2", "password": "pw-ops2", "is_sudo": False})
+    try:
+        for variant in ("ops2", "OPS2 ", " Ops2"):
+            _login(client, variant, "wrong")
+        assert _login(client, "ops2", "pw-ops2").status_code == 429
+    finally:
+        client.delete("/api/admin/ops2", headers=auth)
+
+
+def test_password_spraying_capped_per_ip(client, limiters):
+    for i in range(8):  # 8 different usernames, each below its own limit
+        _login(client, f"spray{i}", "x")
+    assert _login(client, "sudo", "sudopass").status_code == 429
+
+
+def test_unix_socket_uses_proxy_appended_address():
+    from starlette.requests import Request
+    from app.routers.admin import get_client_ip
+
+    def request(xff):
+        headers = [(b"x-forwarded-for", xff.encode())] if xff else []
+        return Request({"type": "http", "client": None, "headers": headers})
+
+    # the client prepended a fake address; the proxy appended the real one
+    assert get_client_ip(request("6.6.6.6, 203.0.113.7")) == "203.0.113.7"
+    assert get_client_ip(request("")) == "Unknown"
 
 
 # --- #2083 / #2066: subscription link changes on every refresh -------------

@@ -95,12 +95,6 @@ Then, navigate to {click.style(f'http://127.0.0.1:{UVICORN_PORT}', bold=True)} o
         bind_args['host'] = '127.0.0.1'
         bind_args['port'] = UVICORN_PORT
 
-    # Behind a reverse proxy uvicorn takes the client IP from X-Forwarded-For,
-    # but only from addresses in FORWARDED_ALLOW_IPS (default 127.0.0.1). A UNIX
-    # socket can only be reached by a local proxy, so trust it there.
-    if bind_args.get('uds') and not os.environ.get('FORWARDED_ALLOW_IPS'):
-        bind_args['forwarded_allow_ips'] = '*'
-
     try:
         uvicorn.run(
             "main:app",
