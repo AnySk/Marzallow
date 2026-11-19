@@ -12,8 +12,12 @@ import {
 } from "@chakra-ui/react";
 import {
   ArrowLeftOnRectangleIcon,
+  ArrowTrendingUpIcon,
   Bars3Icon,
   ChartPieIcon,
+  DocumentDuplicateIcon,
+  TrashIcon,
+  UsersIcon,
   Cog6ToothIcon,
   DocumentMinusIcon,
   LinkIcon,
@@ -22,6 +26,7 @@ import {
   SunIcon,
 } from "@heroicons/react/24/outline";
 import { useDashboard } from "contexts/DashboardContext";
+import { useFeatures } from "contexts/FeaturesContext";
 import { FC, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -47,6 +52,10 @@ const HostsIcon = chakra(LinkIcon, iconProps);
 const NodesIcon = chakra(SquaresPlusIcon, iconProps);
 const NodesUsageIcon = chakra(ChartPieIcon, iconProps);
 const ResetUsageIcon = chakra(DocumentMinusIcon, iconProps);
+const AdminsIcon = chakra(UsersIcon, iconProps);
+const TemplatesIcon = chakra(DocumentDuplicateIcon, iconProps);
+const AnalyticsIcon = chakra(ArrowTrendingUpIcon, iconProps);
+const CleanupIcon = chakra(TrashIcon, iconProps);
 
 export const Header: FC<HeaderProps> = ({ actions }) => {
   const { userData, getUserIsSuccess, getUserIsPending } = useGetUser();
@@ -65,6 +74,7 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
     onShowingNodesUsage,
   } = useDashboard();
   const { t } = useTranslation();
+  const setModal = useFeatures((state) => state.setModal);
   const { colorMode, toggleColorMode } = useColorMode();
 
   return (
@@ -101,6 +111,22 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                   <MenuItem
                     maxW="170px"
                     fontSize="sm"
+                    icon={<AdminsIcon />}
+                    onClick={() => setModal("admins")}
+                  >
+                    {t("header.admins")}
+                  </MenuItem>
+                  <MenuItem
+                    maxW="170px"
+                    fontSize="sm"
+                    icon={<TemplatesIcon />}
+                    onClick={() => setModal("templates")}
+                  >
+                    {t("header.templates")}
+                  </MenuItem>
+                  <MenuItem
+                    maxW="170px"
+                    fontSize="sm"
                     icon={<HostsIcon />}
                     onClick={onEditingHosts.bind(null, true)}
                   >
@@ -132,6 +158,22 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                   </MenuItem>
                 </>
               )}
+              <MenuItem
+                maxW="170px"
+                fontSize="sm"
+                icon={<AnalyticsIcon />}
+                onClick={() => setModal("analytics")}
+              >
+                {t("header.analytics")}
+              </MenuItem>
+              <MenuItem
+                maxW="170px"
+                fontSize="sm"
+                icon={<CleanupIcon />}
+                onClick={() => setModal("cleanup")}
+              >
+                {t("header.cleanup")}
+              </MenuItem>
               <Link to="/login">
                 <MenuItem maxW="170px" fontSize="sm" icon={<LogoutIcon />}>
                   {t("header.logout")}

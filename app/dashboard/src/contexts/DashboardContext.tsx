@@ -12,6 +12,10 @@ export type FilterType = {
   offset?: number;
   sort: string;
   status?: "active" | "disabled" | "limited" | "expired" | "on_hold";
+  expire_before?: number;
+  usage_percent_above?: number;
+  online_within?: number;
+  admin?: string;
 };
 export type ProtocolType = "vmess" | "vless" | "trojan" | "shadowsocks";
 

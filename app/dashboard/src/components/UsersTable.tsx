@@ -23,6 +23,7 @@ import {
   Thead,
   Tooltip,
   Tr,
+  Checkbox,
   useBreakpointValue,
   VStack,
 } from "@chakra-ui/react";
@@ -36,6 +37,7 @@ import {
 } from "@heroicons/react/24/outline";
 import AddFileIcon from "assets/add_file.svg?react";
 import classNames from "classnames";
+import { useFeatures } from "contexts/FeaturesContext";
 import { resetStrategy, statusColors } from "constants/UserSettings";
 import { useDashboard } from "contexts/DashboardContext";
 import { t } from "i18next";
@@ -186,6 +188,37 @@ export const Sort: FC<SortType> = ({ sort, column }) => {
   return null;
 };
 type UsersTableProps = {} & TableProps;
+const RowCheckbox: FC<{ username: string }> = ({ username }) => {
+  const isSelected = useFeatures((s) => s.selected.includes(username));
+  const toggle = useFeatures((s) => s.toggleSelected);
+  return (
+    <Checkbox
+      aria-label={`select ${username}`}
+      isChecked={isSelected}
+      onChange={() => toggle(username)}
+    />
+  );
+};
+
+const SelectAllCheckbox: FC<{ usernames: string[] }> = ({ usernames }) => {
+  const { selected, setSelected } = useFeatures();
+  const onPage = usernames.filter((u) => selected.includes(u)).length;
+  return (
+    <Checkbox
+      aria-label="select all users on this page"
+      isChecked={usernames.length > 0 && onPage === usernames.length}
+      isIndeterminate={onPage > 0 && onPage < usernames.length}
+      onChange={(e) =>
+        setSelected(
+          e.target.checked
+            ? Array.from(new Set([...selected, ...usernames]))
+            : selected.filter((u) => !usernames.includes(u))
+        )
+      }
+    />
+  );
+};
+
 // The user's note under the name, so accounts with technical names are
 // recognisable without opening each one.
 const UserNote: FC<{ note?: string | null }> = ({ note }) =>
@@ -229,7 +262,10 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
     () => window.removeEventListener("scroll", calcTop);
   }, []);
 
-  const isFiltered = users.length !== totalUsers.total;
+  const isFiltered =
+    !!(filters.search || filters.status || filters.expire_before ||
+      filters.usage_percent_above || filters.online_within || filters.admin) ||
+    users.length !== totalUsers.total;
 
   const handleSort = (column: string) => {
     let newSort = filters.sort;
@@ -510,6 +546,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
       >
         <Thead zIndex="docked" position="relative">
           <Tr>
+            <Th position="sticky" top={{ base: "unset", md: top }} w="36px" px={3}>
+              <SelectAllCheckbox usernames={(users || []).map((u) => u.username)} />
+            </Th>
             <Th
               position="sticky"
               top={{ base: "unset", md: top }}
@@ -608,6 +647,9 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                   })}
                   onClick={() => onEditingUser(user)}
                 >
+                  <Td w="36px" px={3} onClick={(e) => e.stopPropagation()}>
+                    <RowCheckbox username={user.username} />
+                  </Td>
                   <Td minW="140px">
                     <div className="flex-status">
                       <OnlineBadge lastOnline={user.online_at} />
@@ -639,7 +681,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
             })}
           {users.length == 0 && (
             <Tr>
-              <Td colSpan={4}>
+              <Td colSpan={5}>
                 <EmptySection isFiltered={isFiltered} />
               </Td>
             </Tr>

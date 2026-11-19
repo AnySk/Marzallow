@@ -1,4 +1,6 @@
 import { Box, VStack } from "@chakra-ui/react";
+import { AlertsBar } from "components/AlertsBar";
+import { BulkActionsBar } from "components/BulkActionsBar";
 import { DeleteUserModal } from "components/DeleteUserModal";
 import { Filters } from "components/Filters";
 import { Footer } from "components/Footer";
@@ -23,6 +25,18 @@ const HostsDialog = lazy(() =>
 const NodesDialog = lazy(() =>
   import("components/NodesModal").then((m) => ({ default: m.NodesDialog }))
 );
+const AdminsModal = lazy(() =>
+  import("components/AdminsModal").then((m) => ({ default: m.AdminsModal }))
+);
+const TemplatesModal = lazy(() =>
+  import("components/TemplatesModal").then((m) => ({ default: m.TemplatesModal }))
+);
+const AnalyticsModal = lazy(() =>
+  import("components/AnalyticsModal").then((m) => ({ default: m.AnalyticsModal }))
+);
+const ExpiredCleanupModal = lazy(() =>
+  import("components/ExpiredCleanupModal").then((m) => ({ default: m.ExpiredCleanupModal }))
+);
 const NodesUsage = lazy(() =>
   import("components/NodesUsage").then((m) => ({ default: m.NodesUsage }))
 );
@@ -37,8 +51,10 @@ export const Dashboard: FC = () => {
       <Box w="full">
         <Header />
         <Statistics mt="4" />
+        <AlertsBar />
         <Filters />
         <UsersTable />
+        <BulkActionsBar />
         <UserDialog />
         <DeleteUserModal />
         <QRCodeDialog />
@@ -50,6 +66,10 @@ export const Dashboard: FC = () => {
           <NodesDialog />
           <NodesUsage />
           <CoreSettingsModal />
+          <AdminsModal />
+          <TemplatesModal />
+          <AnalyticsModal />
+          <ExpiredCleanupModal />
         </Suspense>
       </Box>
       <Footer />

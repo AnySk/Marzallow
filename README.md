@@ -32,9 +32,15 @@ This is a personal fork of [Marzban](https://github.com/Gozargah/Marzban) by Goz
   - resetting a disabled user's usage re-enabled them; `active-next` always failed;
   - Xray could hang once its error output filled an unread pipe;
   - IPv6 hosts broke Clash/sing-box configs.
-- **Dashboard.** User notes shown in the users table, no external font requests, works under any
-  `DASHBOARD_PATH` without exposing assets at the site root, and the login page loads about half the
-  JavaScript it used to.
+- **Dashboard.**
+  - Bulk actions on selected users: disable, enable, extend by N days, add data, reset usage, revoke, delete.
+  - Admin management, user templates (applied from the Create User dialog), next plans, changing a user's
+    owner and cleanup of expired users, all without the CLI.
+  - Quick filters (expiring soon, over 80% used, online now, by owner), CSV export, a traffic chart with top
+    users, and alert chips for users about to expire or run out of data and for disconnected nodes.
+  - Per user: notes in the table, last subscription fetch and client app, and usage reset history.
+  - No external font requests; works under any `DASHBOARD_PATH` without exposing assets at the site root;
+    the login page loads about half the JavaScript it used to.
 
 ## Features
 

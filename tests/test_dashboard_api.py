@@ -203,3 +203,26 @@ def test_notification_timestamps_are_per_instance():
     second = Notification(username="b", action=Notification.Type.user_created)
     assert second.enqueued_at > first.enqueued_at
     assert abs(second.enqueued_at - time.time()) < 5
+
+
+def test_save_only_next_plan(client, auth, make_user):
+    # the dashboard's "Save next plan" sends nothing else
+    make_user("plan_only", data_limit=5 * GB)
+    r = client.put("/api/user/plan_only", headers=auth, json={
+        "next_plan": {"data_limit": 20 * GB, "expire": 0, "add_remaining_traffic": True, "fire_on_either": True}})
+    assert r.status_code == 200, r.text
+    user = r.json()
+    assert user["next_plan"]["data_limit"] == 20 * GB
+    assert user["data_limit"] == 5 * GB and user["status"] == "active"  # nothing else changed
+
+
+def test_set_owner(client, auth, make_user):
+    make_user("owned_user")
+    client.post("/api/admin", headers=auth, json={"username": "owner2", "password": "pw-owner2", "is_sudo": False})
+    try:
+        r = client.put("/api/user/owned_user/set-owner", headers=auth, params={"admin_username": "owner2"})
+        assert r.status_code == 200, r.text
+        assert r.json()["admin"]["username"] == "owner2"
+        assert _usernames(client, auth, admin="owner2") == ["owned_user"]
+    finally:
+        client.delete("/api/admin/owner2", headers=auth)
