@@ -120,13 +120,13 @@ def test_user_template_then_host_template(client, auth, make_user, make_template
 
 def test_singbox_and_clash_templates_per_user(client, auth, make_user, make_template):
     singbox = make_template("singbox", "sb", json.dumps({
-        "log": {"level": "warn"}, "dns": {"servers": [{"address": "{{ user.username }}.example"}]},
+        "log": {"level": "warn"}, "dns": {"servers": [{"address": "{{ user.username }}.example", "tag": "{{ info.DATA_LEFT }}"}]},
         "outbounds": [{"type": "direct", "tag": "direct"}], "route": {"rules": []}}))
     clash_builtin = client.get(f"{V2RAY}/builtin/clash", headers=auth).json()["content"]
     clash = make_template("clash", "cl", "# custom clash\n" + clash_builtin.replace("mode: Global", "mode: rule"))
     user = make_user("tpl_formats", singbox_template_id=singbox["id"], clash_template_id=clash["id"])
     sb = client.get(_sub_path(user) + "/sing-box").json()
-    assert sb["dns"]["servers"] == [{"address": "tpl_formats.example"}]
+    assert sb["dns"]["servers"] == [{"address": "tpl_formats.example", "tag": "10.0 GB"}]
     assert any(o.get("type") == "vless" for o in sb["outbounds"])
     cl = yaml.safe_load(client.get(_sub_path(user) + "/clash").text)
     assert cl["mode"] == "rule" and cl["proxies"]

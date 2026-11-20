@@ -52,8 +52,12 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
 
 
 def _template_args(extra_data: dict, field: str) -> dict:
-    """The user's template for a format and what templates can use ({{ user.username }} …)."""
-    return {"template_id": extra_data.get(field), "context": {"user": extra_data.get("_user")}}
+    """The user's template for a format and what templates can use: {{ user.username }},
+    {{ info.DATA_LEFT }} (the same values as the {DATA_LEFT}-style host variables) …"""
+    return {
+        "template_id": extra_data.get(field),
+        "context": {"user": extra_data.get("_user"), "info": dict(setup_format_variables(extra_data))},
+    }
 
 
 def generate_clash_subscription(

@@ -172,7 +172,10 @@ def validate(kind: TemplateKind, content: str) -> str:
         raise TemplateError(f"Template syntax: {exc.message}", exc.lineno)
 
     syntax = KINDS[kind].syntax
-    context = {"user": _sample_user()}
+    from app.subscription.share import setup_format_variables
+
+    user = _sample_user()
+    context = {"user": user, "info": dict(setup_format_variables(user.__dict__))}
     if kind == TemplateKind.clash:
         context.update(conf={"proxies": [], "proxy-groups": [], "rules": []}, proxy_remarks=[])
     try:

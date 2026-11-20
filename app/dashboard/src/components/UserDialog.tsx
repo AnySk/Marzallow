@@ -60,6 +60,7 @@ import { RadioGroup } from "./RadioGroup";
 import { UsageFilter, createUsageConfig } from "./UsageFilter";
 import { TemplatePicker } from "./TemplatesModal";
 import { UserExtras } from "./UserExtras";
+import { UserTemplateSelects } from "./TemplateSelects";
 import { UserTemplate } from "types/Management";
 import { ReloadIcon } from "./Filters";
 import classNames from "classnames";
@@ -105,6 +106,9 @@ const getDefaultValues = (): FormType => {
     on_hold_expire_duration: null,
     note: "",
     inbounds,
+    v2ray_json_template_id: null,
+    singbox_template_id: null,
+    clash_template_id: null,
     proxies: {
       vless: { id: "", flow: "" },
       vmess: { id: "" },
@@ -133,6 +137,9 @@ const mergeProxies = (
 
 const baseSchema = {
   username: z.string().min(1, { message: "Required" }),
+  v2ray_json_template_id: z.number().nullable().optional(),
+  singbox_template_id: z.number().nullable().optional(),
+  clash_template_id: z.number().nullable().optional(),
   selected_proxies: z.array(z.string()).refine((value) => value.length > 0, {
     message: "userDialog.selectOneProtocol",
   }),
@@ -288,6 +295,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
       form.setValue("inbounds", template.inbounds, options);
       form.setValue("selected_proxies", Object.keys(template.inbounds) as ProxyKeys, options);
     }
+    for (const field of ["v2ray_json_template_id", "singbox_template_id", "clash_template_id"] as const) {
+      if (template[field]) form.setValue(field, template[field], options);
+    }
     if (template.username_prefix || template.username_suffix) {
       const username = form.getValues("username") || "";
       form.setValue(
@@ -321,6 +331,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
           ? values.status
           : "active",
     };
+    if (isEditing) {
+      // the API reads null as "unchanged"; 0 resets to the default template
+      for (const field of ["v2ray_json_template_id", "singbox_template_id", "clash_template_id"] as const)
+        body[field] = values[field] || 0;
+    }
 
     methods[method](body)
       .then(() => {
@@ -405,6 +420,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
     });
   };
   const expireValue = useWatch({ control: form.control, name: "expire" });
+  const tplRefs = useWatch({
+    control: form.control,
+    name: ["v2ray_json_template_id", "singbox_template_id", "clash_template_id"],
+  });
   const onHoldDays = useWatch({ control: form.control, name: "on_hold_expire_duration" });
   const resetValue = useWatch({ control: form.control, name: "data_limit_reset_strategy" });
   const unlimited = !(dataLimit && Number(dataLimit) > 0);
@@ -690,6 +709,17 @@ export const UserDialog: FC<UserDialogProps> = () => {
                   <FormErrorMessage>{t(form.formState.errors.selected_proxies?.message as string)}</FormErrorMessage>
                 </FormControl>
               </FormSection>
+
+              <Box px={6} py={5} borderBottomWidth="1px" borderColor="border-subtle">
+                <UserTemplateSelects
+                  value={{
+                    v2ray_json_template_id: tplRefs[0],
+                    singbox_template_id: tplRefs[1],
+                    clash_template_id: tplRefs[2],
+                  }}
+                  onChange={(field, id) => form.setValue(field, id, { shouldDirty: true })}
+                />
+              </Box>
 
               {isEditing && editingUser && (
                 <>
