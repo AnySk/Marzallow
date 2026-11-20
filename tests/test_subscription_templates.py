@@ -204,3 +204,16 @@ def test_user_template_carries_template_choice(client, auth, make_template):
         assert r.json()["singbox_template_id"] == sb["id"]
     finally:
         client.delete(f"/api/user_template/{r.json()['id']}", headers=auth)
+
+
+def test_subscription_page_escapes_user_text(client, auth, make_user, make_template):
+    # admin-entered text (e.g. a note) must not inject HTML into the page end users open
+    user = make_user("tpl_xss", note='<script>alert(1)</script>')
+    page = client.get(_sub_path(user), headers={"Accept": "text/html"}).text  # built-in page
+    assert "<script>alert(1)</script>" not in page
+    make_template("subscription_page", "own page", "<p>{{ user.note }}</p>", is_default=True)
+    page = client.get(_sub_path(user), headers={"Accept": "text/html"}).text
+    assert page == "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>"
+    r = client.post(f"{V2RAY}/preview", headers=auth, json={
+        "kind": "subscription_page", "content": "<p>{{ user.note }}</p>", "username": "tpl_xss"})
+    assert "<script>" not in r.json()["output"]

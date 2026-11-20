@@ -60,6 +60,17 @@ USER_FIELDS = {info.user_field: kind for kind, info in KINDS.items() if info.use
 sandbox = SandboxedEnvironment(loader=file_env.loader)
 sandbox.filters.update(file_env.filters)
 sandbox.globals.update(file_env.globals)
+# The subscription page is HTML shown to end users and contains admin-entered
+# text (notes, usernames), so it's always autoescaped, file templates included.
+sandbox_html = SandboxedEnvironment(loader=file_env.loader, autoescape=True)
+sandbox_html.filters.update(file_env.filters)
+sandbox_html.globals.update(file_env.globals)
+file_env_html = file_env.overlay(autoescape=True)
+
+
+def _compile(kind: TemplateKind, content: str) -> Template:
+    env = sandbox_html if KINDS[kind].syntax == "html" else sandbox
+    return env.from_string(content)
 
 
 class _Cache:
@@ -85,7 +96,7 @@ class _Cache:
                 for row in db.query(SubscriptionTemplate).all():
                     try:
                         kind = TemplateKind(row.kind)
-                        compiled = sandbox.from_string(row.content)
+                        compiled = _compile(kind, row.content)
                     except (ValueError, TemplateSyntaxError):
                         continue  # saved templates are validated; skip anything broken
                     by_id[row.id] = (kind, compiled)
@@ -103,7 +114,7 @@ _override: ContextVar[Optional[tuple]] = ContextVar("subscription_template_overr
 
 @contextmanager
 def override(kind: TemplateKind, content: str):
-    token = _override.set((kind, sandbox.from_string(content)))
+    token = _override.set((kind, _compile(kind, content)))
     try:
         yield
     finally:
@@ -111,7 +122,8 @@ def override(kind: TemplateKind, content: str):
 
 
 def builtin(kind: TemplateKind) -> Template:
-    return file_env.get_template(KINDS[kind].file)
+    env = file_env_html if KINDS[kind].syntax == "html" else file_env
+    return env.get_template(KINDS[kind].file)
 
 
 def builtin_source(kind: TemplateKind) -> tuple[str, str]:
@@ -167,7 +179,7 @@ def validate(kind: TemplateKind, content: str) -> str:
     """Check that `content` parses and renders to what the kind needs. Returns a
     short summary; raises TemplateError with a line number when it can."""
     try:
-        template = sandbox.from_string(content)
+        template = _compile(kind, content)
     except TemplateSyntaxError as exc:
         raise TemplateError(f"Template syntax: {exc.message}", exc.lineno)
 
