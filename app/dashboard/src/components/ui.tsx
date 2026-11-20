@@ -2,7 +2,7 @@
  * Small building blocks of the Marzallow design (see chakra.config.ts for the
  * tokens): status pills, usage bars, protocol chips and flat cards.
  */
-import { Box, BoxProps, HStack, Text, TextProps } from "@chakra-ui/react";
+import { Box, BoxProps, Flex, Heading, HStack, Text, TextProps, VStack } from "@chakra-ui/react";
 import { FC, ReactNode } from "react";
 
 export type Tone = "success" | "warning" | "danger" | "neutral" | "hold" | "accent";
@@ -99,3 +99,28 @@ export const Panel: FC<BoxProps> = (props) => (
 export const Help: FC<TextProps> = (props) => <Text fontSize="12px" color="text-muted" {...props} />;
 
 export const Muted: FC<TextProps> = (props) => <Text as="span" color="text-muted" {...props} />;
+
+/** Title, one-line explanation and the page's actions (one primary at most). */
+export const PageHeader: FC<{ title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; meta?: ReactNode }> = ({
+  title,
+  subtitle,
+  actions,
+  meta,
+}) => (
+  <Flex as="header" wrap="wrap" align="center" justify="space-between" gap={4}>
+    <VStack align="flex-start" spacing="2px" minW={0}>
+      <HStack spacing={3} flexWrap="wrap">
+        <Heading as="h1" fontSize={{ base: "22px", md: "24px" }} fontWeight={700} letterSpacing="-.01em">
+          {title}
+        </Heading>
+        {meta}
+      </HStack>
+      {subtitle && <Text color="text-muted">{subtitle}</Text>}
+    </VStack>
+    {actions && (
+      <Flex gap="10px" align="center" wrap="wrap">
+        {actions}
+      </Flex>
+    )}
+  </Flex>
+);

@@ -63,6 +63,22 @@ def test_bulk_extend_reactivates_expired(client, auth, make_user):
     assert abs(user["expire"] - (time.time() + 30 * 86400)) < 60
 
 
+def test_bulk_set_expire_and_skip_expired(client, auth, make_user):
+    past = int(time.time()) - 86400
+    target = int(time.time()) + 10 * 86400
+    make_user("bulk_set_a", expire=target - 999)
+    make_user("bulk_set_b", expire=past + 10)
+    _set("bulk_set_b", status=UserStatus.expired, expire=past)
+
+    r = _bulk(client, auth, usernames=["bulk_set_a", "bulk_set_b"], action="set_expire", expire=target,
+              reactivate_expired=False)
+    assert r["done"] == ["bulk_set_a"] and r["skipped"] == {"bulk_set_b": "expired"}
+    assert _get(client, auth, "bulk_set_a")["expire"] == target
+    r = _bulk(client, auth, usernames=["bulk_set_b"], action="set_expire", expire=target)
+    assert r["done"] == ["bulk_set_b"] and _get(client, auth, "bulk_set_b")["status"] == "active"
+    assert client.post("/api/users/bulk", headers=auth, json={"usernames": ["x"], "action": "set_expire"}).status_code == 400
+
+
 def test_bulk_add_data_reactivates_limited(client, auth, make_user):
     make_user("bulk_lim", data_limit=1 * GB)
     _set("bulk_lim", status=UserStatus.limited, used_traffic=1 * GB)
@@ -154,6 +170,13 @@ def test_daily_usage(client, auth, make_user):
     days = client.get("/api/users/usage/daily", headers=auth, params={"username": "daily_user"}).json()
     totals = {d["date"]: d["used_traffic"] for d in days}
     assert sum(totals.values()) == 157
+
+    summary = client.get("/api/users/usage/summary", headers=auth).json()
+    assert summary["total"] >= 157
+    top = {u["username"]: u["used_traffic"] for u in summary["top_users"]}
+    assert top["daily_user"] == 157
+    assert summary["users_with_traffic"] >= 1 and summary["median_per_user"] > 0
+    assert summary["busiest_day"]["used_traffic"] > 0 and summary["new_users"] >= 1
 
 
 def test_system_alerts(client, auth, make_user):

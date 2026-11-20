@@ -389,6 +389,7 @@ class UsersBulkActionType(str, Enum):
     reset_usage = "reset_usage"
     revoke_sub = "revoke_sub"
     extend = "extend"          # add `days` to the expiry date
+    set_expire = "set_expire"  # set the expiry date to `expire`
     add_data = "add_data"      # add `data_limit` bytes to the data limit
 
 
@@ -397,6 +398,9 @@ class UsersBulkAction(BaseModel):
     action: UsersBulkActionType
     days: Optional[int] = Field(None, gt=0, le=3650)
     data_limit: Optional[int] = Field(None, gt=0)
+    expire: Optional[int] = Field(None, gt=0)  # set_expire: UNIX time
+    # extend / set_expire: also apply to expired users (extend counts them from today)
+    reactivate_expired: bool = True
 
 
 class UsersBulkResult(BaseModel):

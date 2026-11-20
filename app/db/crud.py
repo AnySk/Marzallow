@@ -1561,3 +1561,47 @@ def get_daily_usage(db: Session, start: datetime, end: datetime,
         query = query.filter(User.username == username)
     rows = query.group_by(day).order_by(day).all()
     return [{"date": str(d)[:10], "used_traffic": int(total or 0)} for d, total in rows]
+
+
+def get_usage_summary(db: Session, start: datetime, end: datetime, admins: Optional[List[str]] = None) -> dict:
+    """Traffic in [start, end] for the analytics page: total, the same-length period
+    before it, per-user figures (top 10, median of users with traffic), busiest
+    day and users created in the period."""
+    def scoped(query):
+        query = query.join(User, NodeUserUsage.user_id == User.id)
+        if admins:
+            query = query.filter(User.admin.has(Admin.username.in_(admins)))
+        return query
+
+    def total(a, b):
+        q = scoped(db.query(func.coalesce(func.sum(NodeUserUsage.used_traffic), 0))) \
+            .filter(NodeUserUsage.created_at >= a, NodeUserUsage.created_at <= b)
+        return int(q.scalar() or 0)
+
+    per_user = (scoped(db.query(User.username, func.sum(NodeUserUsage.used_traffic).label("used")))
+                .filter(NodeUserUsage.created_at >= start, NodeUserUsage.created_at <= end)
+                .group_by(User.username).all())
+    amounts = sorted(int(u or 0) for _, u in per_user if u)
+    median = 0
+    if amounts:
+        mid = len(amounts) // 2
+        median = amounts[mid] if len(amounts) % 2 else (amounts[mid - 1] + amounts[mid]) // 2
+    top = sorted(((name, int(u or 0)) for name, u in per_user), key=lambda x: -x[1])[:10]
+
+    days = get_daily_usage(db, start, end, admins=admins)
+    busiest = max(days, key=lambda d: d["used_traffic"]) if days else None
+
+    new_users = db.query(func.count(User.id)).filter(User.created_at >= start, User.created_at <= end)
+    if admins:
+        new_users = new_users.filter(User.admin.has(Admin.username.in_(admins)))
+
+    return {
+        "total": total(start, end),
+        "previous_total": total(start - (end - start), start),
+        "users_with_traffic": len(amounts),
+        "average_per_user": (sum(amounts) // len(amounts)) if amounts else 0,
+        "median_per_user": median,
+        "busiest_day": busiest,
+        "new_users": int(new_users.scalar() or 0),
+        "top_users": [{"username": n, "used_traffic": u} for n, u in top],
+    }

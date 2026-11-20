@@ -43,7 +43,7 @@ import { useFeatures } from "contexts/FeaturesContext";
 import useGetUser from "hooks/useGetUser";
 import { FC, PropsWithChildren, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { updateThemeColor } from "utils/themeColor";
 import { useAlerts } from "./AlertsBar";
 import { Footer } from "./Footer";
@@ -80,49 +80,51 @@ type NavItem = {
   sudo?: boolean;
   section: "main" | "manage" | "tools";
   short?: string; // bottom bar label
+  to?: string;
 };
 
 const useNavItems = (): NavItem[] => {
   const { t } = useTranslation();
-  const { onEditingHosts, onEditingNodes, onShowingNodesUsage, onResetAllUsage } = useDashboard();
+  const { onResetAllUsage } = useDashboard();
   const setModal = useFeatures((s) => s.setModal);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { data: stats } = useSystemStats();
   const { data: alerts } = useAlerts();
   const down = alerts?.disconnected_nodes.length || 0;
+  const go = (to: string) => ({
+    to,
+    active: to === "/" ? pathname === "/" : pathname.startsWith(to),
+    onClick: () => {
+      navigate(to);
+      window.scrollTo({ top: 0 });
+    },
+  });
   return [
     {
       key: "users",
       label: t("users"),
       icon: <Icons.users />,
-      onClick: () => window.scrollTo({ top: 0, behavior: "smooth" }),
-      active: true,
+      ...go("/"),
       section: "main",
       badge: stats ? <Count>{stats.total_user}</Count> : null,
     },
-    { key: "hosts", label: t("nav.hosts"), icon: <Icons.hosts />, onClick: () => onEditingHosts(true), sudo: true, section: "main" },
+    { key: "hosts", label: t("nav.hosts"), icon: <Icons.hosts />, ...go("/hosts"), sudo: true, section: "main" },
     {
       key: "nodes",
       label: t("nav.nodes"),
       icon: <Icons.nodes />,
-      onClick: () => onEditingNodes(true),
+      ...go("/nodes"),
       sudo: true,
       section: "main",
       badge: down ? <WarnPill>{t("nav.nodesDown", { count: down })}</WarnPill> : null,
     },
-    {
-      key: "core",
-      label: t("nav.core"),
-      icon: <Icons.core />,
-      onClick: () => useDashboard.setState({ isEditingCore: true }),
-      sudo: true,
-      section: "main",
-    },
-    { key: "templates", label: t("header.templates"), icon: <Icons.templates />, onClick: () => setModal("templates"), sudo: true, section: "manage" },
-    { key: "subTemplates", label: t("subTpl.title"), icon: <Icons.subTemplates />, onClick: () => setModal("subTemplates"), sudo: true, section: "manage" },
-    { key: "admins", label: t("header.admins"), icon: <Icons.admins />, onClick: () => setModal("admins"), sudo: true, section: "manage" },
-    { key: "analytics", label: t("header.analytics"), icon: <Icons.analytics />, onClick: () => setModal("analytics"), section: "manage", short: t("nav.stats") },
-    { key: "nodesUsage", label: t("header.nodesUsage"), icon: <Icons.nodesUsage />, onClick: () => onShowingNodesUsage(true), sudo: true, section: "manage" },
-    { key: "settings", label: t("header.settings"), icon: <Icons.settings />, onClick: () => setModal("settings"), sudo: true, section: "manage" },
+    { key: "core", label: t("nav.core"), icon: <Icons.core />, ...go("/core"), sudo: true, section: "main" },
+    { key: "templates", label: t("header.templates"), icon: <Icons.templates />, ...go("/templates"), sudo: true, section: "manage" },
+    { key: "subTemplates", label: t("subTpl.title"), icon: <Icons.subTemplates />, ...go("/subscription-templates"), sudo: true, section: "manage" },
+    { key: "admins", label: t("header.admins"), icon: <Icons.admins />, ...go("/admins"), sudo: true, section: "manage" },
+    { key: "analytics", label: t("header.analytics"), icon: <Icons.analytics />, ...go("/analytics"), section: "manage", short: t("nav.stats") },
+    { key: "settings", label: t("header.settings"), icon: <Icons.settings />, ...go("/settings"), sudo: true, section: "manage" },
     { key: "cleanup", label: t("header.cleanup"), icon: <Icons.cleanup />, onClick: () => setModal("cleanup"), section: "tools" },
     { key: "resetUsage", label: t("resetAllUsage"), icon: <Icons.resetUsage />, onClick: () => onResetAllUsage(true), sudo: true, section: "tools" },
   ];

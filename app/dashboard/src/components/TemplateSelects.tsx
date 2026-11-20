@@ -3,6 +3,8 @@ import { Box, Button, chakra, Collapse, FormControl, FormLabel, HStack, Select, 
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { defaultName, kindInfo, useSubTemplates } from "contexts/SubscriptionTemplates";
 import useGetUser from "hooks/useGetUser";
+import { useDashboard } from "contexts/DashboardContext";
+import { useNavigate } from "react-router-dom";
 import { FC } from "react";
 import { useTranslation } from "react-i18next";
 import { TemplateKind, USER_TEMPLATE_FIELDS, UserTemplateRefs } from "types/SubscriptionTemplate";
@@ -53,6 +55,7 @@ export const UserTemplateSelects: FC<{
   const { data: kinds } = useSubTemplates(userData.is_sudo);
   const custom = KINDS.filter((k) => value[USER_TEMPLATE_FIELDS[k]]);
   const open = useDisclosure({ defaultIsOpen: custom.length > 0 && !compact });
+  const navigate = useNavigate();
   const nothingToPick = kinds && KINDS.every((k) => !kindInfo(kinds, k)?.templates.length) && !custom.length;
   const summary = custom.length
     ? t("subTpl.customSummary", { formats: custom.map((k) => kindInfo(kinds, k)?.label || k).join(", ") })
@@ -88,7 +91,11 @@ export const UserTemplateSelects: FC<{
           )}
           <Help mt={2}>{t("subTpl.hostWins")}</Help>
           {userData.is_sudo && (
-            <Button size="xs" variant="link" mt={1} color="link" fontWeight={500} onClick={() => import("contexts/FeaturesContext").then((m) => m.useFeatures.getState().setModal("subTemplates"))}>
+            <Button size="xs" variant="link" mt={1} color="link" fontWeight={500} onClick={() => {
+                useDashboard.getState().onCreateUser(false);
+                useDashboard.getState().onEditingUser(null);
+                navigate("/subscription-templates");
+              }}>
               {t("subTpl.manage")}
             </Button>
           )}

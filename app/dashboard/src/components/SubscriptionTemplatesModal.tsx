@@ -74,7 +74,7 @@ import {
 import { User } from "types/User";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
 import { CodeEditor } from "./CodeEditor";
-import { Chip, Help, Panel } from "./ui";
+import { Chip, Help, PageHeader, Panel } from "./ui";
 
 const CoreConfigEditor = lazy(() => import("./CoreConfigEditor"));
 
@@ -88,7 +88,7 @@ const Icons = {
   err: ic(ExclamationCircleIcon),
 };
 
-const EDITOR_H = "max(280px, calc(100vh - 480px))"; // leaves room for the validation bar and footer
+const EDITOR_H = "max(300px, calc(100vh - 470px))"; // leaves room for the validation bar and footer
 
 const KINDS: TemplateKind[] = ["v2ray_json", "singbox", "clash", "subscription_page"];
 
@@ -844,88 +844,59 @@ const defaultLabel = (info: TemplateKindInfo, t: (k: string) => string) =>
 /* ----------------------------------------------------------------- modal ------- */
 
 export const SubscriptionTemplatesModal: FC = () => {
-  const { openModal, setModal } = useFeatures();
-  const isOpen = openModal === "subTemplates";
   const { t } = useTranslation();
-  const { data: kinds, isLoading } = useSubTemplates(isOpen);
+  const { data: kinds, isLoading } = useSubTemplates(true);
   const qc = useQueryClient();
   // usage counts change when users and hosts are edited elsewhere
   useEffect(() => {
-    if (isOpen) invalidate(qc);
-  }, [isOpen, qc]);
+    invalidate(qc);
+  }, [qc]);
   const [kind, setKind] = useState<TemplateKind>("v2ray_json");
   const [target, setTarget] = useState<Target | null>(null);
   const [deleting, setDeleting] = useState<SubTemplateInfo | null>(null);
 
-  const onClose = () => {
-    setModal(null);
-    setTarget(null);
-  };
-
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="6xl" scrollBehavior="inside" closeOnOverlayClick={!target}>
-      <ModalOverlay />
-      <ModalContent mx={3} maxW="1200px">
-        <ModalHeader pr={12}>
-          <Flex wrap="wrap" gap={3} align="center" justify="space-between">
-            <VStack align="flex-start" spacing="2px">
-              <Text fontSize="18px" fontWeight={700}>
-                {t("subTpl.title")}
-              </Text>
-              <Text fontSize="13px" fontWeight={400} color="text-muted">
-                {t("subTpl.subtitle")}
-              </Text>
-            </VStack>
-            {!target && (
-              <Button
-                colorScheme="primary"
-                leftIcon={<Icons.plus />}
-                onClick={() =>
-                  fetch<{ content: string }>(`/subscription-templates/builtin/${kind}`).then((d) =>
-                    setTarget({ mode: "new", kind, content: d.content, name: "" })
-                  )
-                }
-              >
-                {t("subTpl.new")}
-              </Button>
-            )}
-          </Flex>
-        </ModalHeader>
-        <ModalCloseButton />
-        <ModalBody pb={6}>
-          {isLoading || !kinds ? (
-            <Flex justify="center" py={16}>
-              <Spinner />
-            </Flex>
-          ) : target ? (
-            <Editor
-              key={JSON.stringify(target).slice(0, 80)}
-              kinds={kinds}
-              target={target}
-              onDelete={setDeleting}
-              close={(saved: any) => {
-                if (saved?.duplicateOf !== undefined && target.mode === "builtin")
-                  setTarget({ mode: "new", kind: target.kind, content: saved.duplicateOf, name: t("subTpl.copyOf", { name: t("subTpl.builtin") }) });
-                else setTarget(null);
-              }}
-            />
-          ) : (
-            <TemplateList kinds={kinds} kind={kind} setKind={setKind} open={setTarget} onDelete={setDeleting} />
-          )}
-        </ModalBody>
-        {!target && (
-          <ModalFooter>
-            <Tooltip label={t("subTpl.docsHint")}>
-              <Text fontSize="12px" color="text-muted" mr="auto">
-                {t("subTpl.footerHint")}
-              </Text>
-            </Tooltip>
-            <Button variant="outline" onClick={onClose}>
-              {t("qrcodeDialog.done")}
+    <>
+      <PageHeader
+        title={t("subTpl.title")}
+        subtitle={t("subTpl.subtitle")}
+        actions={
+          !target && (
+            <Button
+              colorScheme="primary"
+              leftIcon={<Icons.plus />}
+              onClick={() =>
+                fetch<{ content: string }>(`/subscription-templates/builtin/${kind}`).then((d) =>
+                  setTarget({ mode: "new", kind, content: d.content, name: "" })
+                )
+              }
+            >
+              {t("subTpl.new")}
             </Button>
-          </ModalFooter>
-        )}
-      </ModalContent>
+          )
+        }
+      />
+      {isLoading || !kinds ? (
+        <Flex justify="center" py={16}>
+          <Spinner />
+        </Flex>
+      ) : target ? (
+        <Panel p={{ base: 3, md: 5 }}>
+          <Editor
+            key={JSON.stringify(target).slice(0, 80)}
+            kinds={kinds}
+            target={target}
+            onDelete={setDeleting}
+            close={(saved: any) => {
+              if (saved?.duplicateOf !== undefined && target.mode === "builtin")
+                setTarget({ mode: "new", kind: target.kind, content: saved.duplicateOf, name: t("subTpl.copyOf", { name: t("subTpl.builtin") }) });
+              else setTarget(null);
+            }}
+          />
+        </Panel>
+      ) : (
+        <TemplateList kinds={kinds} kind={kind} setKind={setKind} open={setTarget} onDelete={setDeleting} />
+      )}
       {kinds && (
         <DeleteDialog
           kinds={kinds}
@@ -936,7 +907,7 @@ export const SubscriptionTemplatesModal: FC = () => {
           }}
         />
       )}
-    </Modal>
+    </>
   );
 };
 

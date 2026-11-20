@@ -33,6 +33,7 @@ import { ChartPieIcon } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { resetStrategy } from "constants/UserSettings";
 import { FilterUsageType, useDashboard } from "contexts/DashboardContext";
+import { useFeatures } from "contexts/FeaturesContext";
 import dayjs from "dayjs";
 import { FC, ReactNode, useEffect, useState } from "react";
 import ReactApexChart from "react-apexcharts";
@@ -307,6 +308,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
       );
     }
   };
+
+  // "Create user" on a user template card
+  useEffect(() => {
+    const template = useFeatures.getState().createFrom;
+    if (isCreatingNewUser && template) {
+      applyTemplate(template);
+      useFeatures.getState().setCreateFrom(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreatingNewUser]);
 
   const submit = (values: FormType) => {
     setLoading(true);

@@ -1,7 +1,9 @@
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from app import xray
@@ -100,6 +102,9 @@ def admin_token(
         )
 
     login_limiter.reset(account_key)
+    if (db_record := crud.get_admin(db, form_data.username)) is not None:  # .env sudoers have no row
+        db_record.last_login_at = datetime.utcnow()
+        db.commit()
     if not ip_known or client_ip not in runtime_settings.LOGIN_NOTIFY_WHITE_LIST:
         report.login(form_data.username, "🔒", client_ip, True)
 
@@ -189,6 +194,38 @@ def get_admins(
 ):
     """Fetch a list of admins with optional filters for pagination and username."""
     return crud.get_admins(db, offset, limit, username)
+
+
+class AdminOverview(BaseModel):
+    username: str
+    users: int = 0
+    active_users: int = 0
+    traffic_30d: int = 0
+    last_login_at: Optional[datetime] = None
+
+
+@router.get("/admins/overview", response_model=List[AdminOverview])
+def get_admins_overview(db: Session = Depends(get_db), admin: Admin = Depends(Admin.check_sudo_admin)):
+    """Per admin: how many users they have, their users' traffic in the last 30 days, last sign-in."""
+    from sqlalchemy import func
+
+    from app.db.models import Admin as DBAdmin, NodeUserUsage, User as DBUser
+    from app.models.user import UserStatus
+
+    users = dict(db.query(DBUser.admin_id, func.count()).group_by(DBUser.admin_id).all())
+    active = dict(db.query(DBUser.admin_id, func.count())
+                  .filter(DBUser.status == UserStatus.active).group_by(DBUser.admin_id).all())
+    since = datetime.utcnow() - timedelta(days=30)
+    traffic = dict(
+        db.query(DBUser.admin_id, func.coalesce(func.sum(NodeUserUsage.used_traffic), 0))
+        .join(NodeUserUsage, NodeUserUsage.user_id == DBUser.id)
+        .filter(NodeUserUsage.created_at >= since).group_by(DBUser.admin_id).all()
+    )
+    return [
+        AdminOverview(username=a.username, users=users.get(a.id, 0), active_users=active.get(a.id, 0),
+                      traffic_30d=int(traffic.get(a.id, 0) or 0), last_login_at=a.last_login_at)
+        for a in db.query(DBAdmin).order_by(DBAdmin.username).all()
+    ]
 
 
 @router.post("/admin/{username}/users/disable", responses={403: responses._403, 404: responses._404})

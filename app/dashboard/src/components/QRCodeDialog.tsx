@@ -17,7 +17,8 @@ import {
 } from "@chakra-ui/react";
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, ClipboardDocumentIcon } from "@heroicons/react/24/outline";
 import { QRCodeCanvas } from "qrcode.react";
-import { FC, useEffect, useState } from "react";
+import { FC, useEffect, useRef, useState } from "react";
+import { useFeatures } from "contexts/FeaturesContext";
 import CopyToClipboard from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
 import { useDashboard } from "../contexts/DashboardContext";
@@ -68,9 +69,20 @@ export const QRCodeDialog: FC = () => {
     setTab(subscribeUrl ? "sub" : "links");
   }, [QRcodeLinks, subscribeUrl]);
 
+  const sharing = useFeatures((s) => s.sharing);
+  const qrBox = useRef<HTMLDivElement>(null);
   const onClose = () => {
     setQRCode(null);
     setSubLink(null);
+    useFeatures.getState().setSharing(null);
+  };
+  const downloadQr = () => {
+    const canvas = qrBox.current?.querySelector("canvas");
+    if (!canvas) return;
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = `${sharing?.username || "subscription"}${tab === "links" ? `-${index + 1}` : ""}.png`;
+    a.click();
   };
   const subLink = String(subscribeUrl).startsWith("/") ? window.location.origin + subscribeUrl : String(subscribeUrl);
   const value = tab === "sub" ? subLink : links[index] || "";
@@ -83,6 +95,12 @@ export const QRCodeDialog: FC = () => {
           <VStack align="flex-start" spacing="2px">
             <Text fontSize="17px" fontWeight={700}>
               {t("qrcodeDialog.title")}
+              {sharing && (
+                <Text as="span" fontFamily="mono" fontWeight={600}>
+                  {" "}
+                  {sharing.username}
+                </Text>
+              )}
             </Text>
             <Text fontSize="12px" fontWeight={400} color="text-muted">
               {t("qrcodeDialog.help")}
@@ -114,7 +132,7 @@ export const QRCodeDialog: FC = () => {
             </Flex>
           )}
           <Flex gap={4} align="center" direction={{ base: "column", sm: "row" }}>
-            <Box p={2} bg="white" borderRadius="md" borderWidth="1px" borderColor="border" flex="none">
+            <Box ref={qrBox} p={2} bg="white" borderRadius="md" borderWidth="1px" borderColor="border" flex="none">
               <QRCode size={168} level="L" includeMargin={false} value={value} />
             </Box>
             <VStack align="stretch" spacing={2} minW={0} flex={1} w="full">
@@ -138,6 +156,9 @@ export const QRCodeDialog: FC = () => {
               </Box>
               <HStack spacing={2} flexWrap="wrap">
                 <CopyButton text={value} label={tab === "sub" ? t("qrcodeDialog.copyLink") : t("qrcodeDialog.copyConfig")} primary />
+                <Button size="sm" variant="outline" onClick={downloadQr}>
+                  {t("qrcodeDialog.downloadQr")}
+                </Button>
                 {tab === "links" && links.length > 1 && (
                   <HStack spacing={1} ml="auto">
                     <IconButton size="sm" variant="outline" aria-label={t("previous")} icon={<Icons.prev />} isDisabled={index === 0} onClick={() => setIndex(index - 1)} />
@@ -163,7 +184,16 @@ export const QRCodeDialog: FC = () => {
             </VStack>
           )}
         </ModalBody>
-        <ModalFooter>
+        <ModalFooter justifyContent="space-between">
+          {sharing ? (
+            <Button variant="ghost" colorScheme="red" onClick={() => {
+              const user = sharing;
+              onClose();
+              useDashboard.setState({ revokeSubscriptionUser: user });
+            }}>
+              {t("qrcodeDialog.revoke")}
+            </Button>
+          ) : <span />}
           <Button variant="outline" onClick={onClose}>
             {t("qrcodeDialog.done")}
           </Button>

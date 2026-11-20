@@ -26,6 +26,7 @@ export type BulkAction =
   | "reset_usage"
   | "revoke_sub"
   | "extend"
+  | "set_expire"
   | "add_data";
 
 export type BulkResult = { done: string[]; skipped: Record<string, string> };

@@ -271,6 +271,8 @@ def bulk_users_action(
     """
     if body.action == UsersBulkActionType.extend and not body.days:
         raise HTTPException(status_code=400, detail="`days` is required for extend")
+    if body.action == UsersBulkActionType.set_expire and not body.expire:
+        raise HTTPException(status_code=400, detail="`expire` is required for set_expire")
     if body.action == UsersBulkActionType.add_data and not body.data_limit:
         raise HTTPException(status_code=400, detail="`data_limit` is required for add_data")
 
@@ -303,11 +305,17 @@ def bulk_users_action(
                     result.skipped[username] = "not disabled"
                     continue
                 modify_user(UserModify(status=UserStatus.active), bg, db, dbuser, admin)
-            elif action == UsersBulkActionType.extend:
-                if not dbuser.expire:
-                    result.skipped[username] = "no expiry date"
+            elif action in (UsersBulkActionType.extend, UsersBulkActionType.set_expire):
+                if dbuser.status == UserStatus.expired and not body.reactivate_expired:
+                    result.skipped[username] = "expired"
                     continue
-                new_expire = max(dbuser.expire, now) + body.days * 86400
+                if action == UsersBulkActionType.extend:
+                    if not dbuser.expire:
+                        result.skipped[username] = "no expiry date"
+                        continue
+                    new_expire = max(dbuser.expire, now) + body.days * 86400
+                else:
+                    new_expire = body.expire
                 modify_user(UserModify(expire=new_expire), bg, db, dbuser, admin)
             elif action == UsersBulkActionType.add_data:
                 if not dbuser.data_limit:
@@ -347,6 +355,19 @@ def get_daily_usage(
     return crud.get_daily_usage(db, start, end,
                                 admins=owner if admin.is_sudo else [admin.username],
                                 username=username)
+
+
+@router.get("/users/usage/summary")
+def get_usage_summary(
+    start: str = "",
+    end: str = "",
+    owner: Union[List[str], None] = Query(None, alias="admin"),
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.get_current),
+):
+    """Traffic figures for the analytics page (defaults to the last 30 days)."""
+    start, end = validate_dates(start, end)
+    return crud.get_usage_summary(db, start, end, admins=owner if admin.is_sudo else [admin.username])
 
 
 @router.post("/users/reset", responses={403: responses._403, 404: responses._404})

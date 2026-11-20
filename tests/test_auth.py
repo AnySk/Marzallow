@@ -58,3 +58,19 @@ def test_db_admin_lifecycle(client, auth):
     assert client.get("/api/admin", headers=ops).status_code == 401
 
     assert client.delete("/api/admin/ops", headers=auth).status_code == 200
+
+
+def test_admins_overview(client, auth, make_user):
+    r = client.post("/api/admin", headers=auth, json={"username": "overview_admin", "password": "overviewpass1", "is_sudo": False})
+    assert r.status_code == 200, r.text
+    try:
+        token = client.post("/api/admin/token", data={"username": "overview_admin", "password": "overviewpass1"}).json()["access_token"]
+        client.post("/api/user", headers={"Authorization": f"Bearer {token}"},
+                    json={"username": "overview_user", "proxies": {"vless": {}}})
+        rows = {r["username"]: r for r in client.get("/api/admins/overview", headers=auth).json()}
+        assert rows["overview_admin"]["users"] == 1 and rows["overview_admin"]["active_users"] == 1
+        assert rows["overview_admin"]["last_login_at"] is not None
+        assert client.get("/api/admins/overview", headers={"Authorization": f"Bearer {token}"}).status_code == 403
+    finally:
+        client.delete("/api/user/overview_user", headers=auth)
+        client.delete("/api/admin/overview_admin", headers=auth)

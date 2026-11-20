@@ -327,6 +327,7 @@ const ActionButtons: FC<{ user: User }> = ({ user }) => {
           aria-label={t("usersTable.qrCode")}
           icon={<Icons.qr />}
           onClick={() => {
+            useFeatures.getState().setSharing(user);
             setQRCode(user.links);
             setSubLink(user.subscription_url);
           }}
