@@ -16,6 +16,7 @@ from app.utils import responses
 
 from app.utils.system import cpu_usage, memory_usage, realtime_bandwidth
 from app.settings import settings as runtime_settings
+from app.routers.subscription_template import check_refs as check_template_refs
 
 router = APIRouter(tags=["System"], prefix="/api", responses={401: responses._401})
 
@@ -100,6 +101,10 @@ def modify_hosts(
             raise HTTPException(
                 status_code=400, detail=f"Inbound {inbound_tag} doesn't exist"
             )
+
+    for hosts in modified_hosts.values():
+        for host in hosts:
+            check_template_refs(db, host, fields=["v2ray_json_template_id"])
 
     for inbound_tag, hosts in modified_hosts.items():
         crud.update_hosts(db, inbound_tag, hosts)

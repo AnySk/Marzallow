@@ -1,3 +1,4 @@
+import { UserTemplateRefs } from "./SubscriptionTemplate";
 export type Status =
   | "active"
   | "disabled"
@@ -54,7 +55,7 @@ export type User = {
   sub_last_user_agent?: string | null;
   next_plan?: NextPlan | null;
   admin?: { username: string; is_sudo: boolean } | null;
-};
+} & UserTemplateRefs;
 
 export type NextPlan = {
   data_limit: number | null;
@@ -74,6 +75,9 @@ export type UserCreate = Pick<
   | "username"
   | "status"
   | "note"
+  | "v2ray_json_template_id"
+  | "singbox_template_id"
+  | "clash_template_id"
 >;
 
 export type UserApi = {

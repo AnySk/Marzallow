@@ -4,7 +4,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { basicSetup } from "codemirror";
 import { applyEdits, findNodeAtLocation, modify, parse, ParseError, parseTree } from "jsonc-parser";
-import { FC, useCallback, useEffect, useRef, useState } from "react";
+import { FC, ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { enclosingContainerPath, schemaExtensions } from "./extensions";
 import { FieldsPanel } from "./FieldsPanel";
 import { JsonPath, SchemaNode } from "./schema";
@@ -13,6 +13,7 @@ type Props = {
   value: string;
   onChange: (text: string) => void;
   height?: string; // e.g. full screen
+  aside?: ReactNode; // extra help under the fields panel
 };
 
 const parseStrict = (text: string) => {
@@ -27,7 +28,7 @@ const parseStrict = (text: string) => {
  * cursor with pickers for their allowed values. Panel edits are applied to the
  * text, preserving the rest of the formatting.
  */
-export const CoreConfigEditor: FC<Props> = ({ value, onChange, height }) => {
+export const CoreConfigEditor: FC<Props> = ({ value, onChange, height, aside }) => {
   const { colorMode } = useColorMode();
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -70,6 +71,8 @@ export const CoreConfigEditor: FC<Props> = ({ value, onChange, height }) => {
     });
     view.current?.destroy();
     view.current = new EditorView({ state, parent: host.current! });
+    // lets browser tests (and devtools) reach the editor: document.querySelector(...).__view
+    (host.current as any).__view = view.current;
     return () => {
       view.current?.destroy();
       view.current = null;
@@ -124,7 +127,7 @@ export const CoreConfigEditor: FC<Props> = ({ value, onChange, height }) => {
         h={{ base: "50vh", lg: "full" }}
         border="1px solid"
         borderColor="border-strong"
-        borderRadius={5}
+        borderRadius="md"
         overflow="hidden"
         data-testid="core-config-editor"
       />
@@ -139,6 +142,7 @@ export const CoreConfigEditor: FC<Props> = ({ value, onChange, height }) => {
         p={3}
       >
         <FieldsPanel schema={schema} doc={parseStrict(text)} path={path} onEdit={onEdit} onNavigate={onNavigate} />
+        {aside}
       </Box>
     </Flex>
   );

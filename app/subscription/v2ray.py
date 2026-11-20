@@ -10,6 +10,7 @@ from uuid import UUID
 from jinja2.exceptions import TemplateNotFound
 
 from app.subscription.funcs import get_grpc_gun, get_grpc_multi
+from app.subscription import templates
 from app.templates import render_template
 from app.utils.helpers import UUIDEncoder
 from config import (
@@ -18,7 +19,6 @@ from config import (
     MUX_TEMPLATE,
     USER_AGENT_TEMPLATE,
     V2RAY_SETTINGS_TEMPLATE,
-    V2RAY_SUBSCRIPTION_TEMPLATE,
 )
 
 
@@ -504,9 +504,15 @@ class V2rayShareLink(str):
 
 class V2rayJsonConfig(str):
 
-    def __init__(self):
+    def __new__(cls, *args, **kwargs):  # str subclass: keep str() from seeing our arguments
+        return super().__new__(cls)
+
+    def __init__(self, template_id: int = None, context: dict = None):
         self.config = []
-        self.template = render_template(V2RAY_SUBSCRIPTION_TEMPLATE)
+        # the user's template; a host can choose its own (see app/subscription/templates.py)
+        self.template_id = template_id
+        self.context = context or {}
+        self._templates = {}
         self.mux_template = render_template(MUX_TEMPLATE)
         user_agent_data = json.loads(render_template(USER_AGENT_TEMPLATE))
 
@@ -529,8 +535,15 @@ class V2rayJsonConfig(str):
 
         del user_agent_data, grpc_user_agent_data
 
-    def add_config(self, remarks, outbounds):
-        json_template = json.loads(self.template)
+    def _template(self, host_template_id=None) -> str:
+        key = host_template_id or self.template_id
+        if key not in self._templates:
+            self._templates[key] = templates.render(
+                templates.TemplateKind.v2ray_json, self.context, host_template_id, self.template_id)
+        return self._templates[key]
+
+    def add_config(self, remarks, outbounds, host_template_id=None):
+        json_template = json.loads(self._template(host_template_id))
         json_template["remarks"] = remarks
         json_template["outbounds"] = outbounds + json_template["outbounds"]
         self.config.append(json_template)
@@ -1110,4 +1123,4 @@ class V2rayJsonConfig(str):
             outbound["mux"] = mux_config
             outbound["mux"]["enabled"] = True
 
-        self.add_config(remarks=remark, outbounds=outbounds)
+        self.add_config(remarks=remark, outbounds=outbounds, host_template_id=inbound.get("json_template_id"))

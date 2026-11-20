@@ -1,3 +1,4 @@
+import { UserTemplateRefs } from "./SubscriptionTemplate";
 import { UserInbounds } from "./User";
 
 export type AdminInfo = {
@@ -16,7 +17,7 @@ export type UserTemplate = {
   username_prefix: string | null;
   username_suffix: string | null;
   inbounds: UserInbounds;
-};
+} & UserTemplateRefs;
 
 export type BulkAction =
   | "disable"

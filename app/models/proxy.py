@@ -157,6 +157,8 @@ class ProxyHost(BaseModel):
     use_sni_as_host: Union[bool, None] = None
     pinned_peer_cert_sha256: Optional[str] = Field(None, nullable=True)
     verify_peer_cert_by_name: Optional[str] = Field(None, nullable=True)
+    # template for this host's entry in V2Ray JSON subscriptions; null uses the user's or the default
+    v2ray_json_template_id: Optional[int] = Field(None, nullable=True, ge=0)
     model_config = ConfigDict(from_attributes=True)
 
     @field_validator("pinned_peer_cert_sha256", mode="after")

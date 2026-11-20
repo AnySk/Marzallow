@@ -43,6 +43,8 @@ import { formatBytes } from "utils/formatByte";
 import { queryClient } from "utils/react-query";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
 import { ConfirmButton } from "./ConfirmButton";
+import { UserTemplateSelects } from "./TemplateSelects";
+import { UserTemplateRefs } from "types/SubscriptionTemplate";
 
 const GB = 1024 ** 3;
 const DAY = 86400;
@@ -54,6 +56,7 @@ type TemplateForm = {
   username_prefix: string;
   username_suffix: string;
   inbounds: UserInbounds;
+  refs: UserTemplateRefs;
 };
 
 export const useTemplates = (enabled = true) =>
@@ -92,6 +95,11 @@ export const TemplatesModal: FC = () => {
       username_prefix: template?.username_prefix || "",
       username_suffix: template?.username_suffix || "",
       inbounds: template?.inbounds || {},
+      refs: {
+        v2ray_json_template_id: template?.v2ray_json_template_id || null,
+        singbox_template_id: template?.singbox_template_id || null,
+        clash_template_id: template?.clash_template_id || null,
+      },
     });
   };
 
@@ -104,6 +112,10 @@ export const TemplatesModal: FC = () => {
         username_prefix: form!.username_prefix || null,
         username_suffix: form!.username_suffix || null,
         inbounds: form!.inbounds,
+        // 0 resets to the default (null would mean "unchanged" on edit)
+        v2ray_json_template_id: form!.refs.v2ray_json_template_id || 0,
+        singbox_template_id: form!.refs.singbox_template_id || 0,
+        clash_template_id: form!.refs.clash_template_id || 0,
       };
       return editing === "new"
         ? fetch("/user_template", { method: "POST", body })
@@ -186,6 +198,13 @@ export const TemplatesModal: FC = () => {
                   ))}
                 </VStack>
               </FormControl>
+              <Box mt={4} pt={3} borderTopWidth="1px" borderColor="border-subtle">
+                <UserTemplateSelects
+                  compact
+                  value={form.refs}
+                  onChange={(field, id) => setForm({ ...form, refs: { ...form.refs, [field]: id } })}
+                />
+              </Box>
               <HStack mt={4} justifyContent="flex-end">
                 <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>{t("cancel")}</Button>
                 <Button size="sm" colorScheme="primary" type="submit" isLoading={save.isPending}>

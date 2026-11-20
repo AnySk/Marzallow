@@ -8,6 +8,7 @@ from app.models.admin import Admin
 from app.models.user_template import (UserTemplateCreate, UserTemplateModify,
                                       UserTemplateResponse)
 from app.dependencies import get_user_template
+from app.routers.subscription_template import check_refs as check_template_refs
 
 router = APIRouter(tags=['User Template'], prefix='/api')
 
@@ -25,6 +26,7 @@ def add_user_template(
     - **expire_duration** must be in seconds and larger or equat to 0
     - **inbounds** dictionary of protocol:inbound_tags, empty means all inbounds
     """
+    check_template_refs(db, new_user_template)
     try:
         return crud.create_user_template(db, new_user_template)
     except IntegrityError:
@@ -55,6 +57,7 @@ def modify_user_template(
     - **expire_duration** must be in seconds and larger or equat to 0
     - **inbounds** dictionary of protocol:inbound_tags, empty means all inbounds
     """
+    check_template_refs(db, modify_user_template)
     try:
         return crud.update_user_template(db, dbuser_template, modify_user_template)
     except IntegrityError:

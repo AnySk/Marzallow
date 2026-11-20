@@ -163,6 +163,7 @@ def update_hosts(db: Session, inbound_tag: str, modified_hosts: List[ProxyHostMo
             use_sni_as_host=host.use_sni_as_host,
             pinned_peer_cert_sha256=host.pinned_peer_cert_sha256,
             verify_peer_cert_by_name=host.verify_peer_cert_by_name,
+            v2ray_json_template_id=host.v2ray_json_template_id or None,
         ) for host in modified_hosts
     ]
     db.commit()
@@ -413,6 +414,9 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None) -> User:
         on_hold_expire_duration=(user.on_hold_expire_duration or None),
         on_hold_timeout=(user.on_hold_timeout or None),
         auto_delete_in_days=user.auto_delete_in_days,
+        v2ray_json_template_id=user.v2ray_json_template_id or None,
+        singbox_template_id=user.singbox_template_id or None,
+        clash_template_id=user.clash_template_id or None,
         next_plan=NextPlan(
             data_limit=user.next_plan.data_limit,
             expire=user.next_plan.expire,
@@ -528,6 +532,10 @@ def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
 
     if modify.note is not None:
         dbuser.note = modify.note or None
+
+    for field in ("v2ray_json_template_id", "singbox_template_id", "clash_template_id"):
+        if (value := getattr(modify, field)) is not None:
+            setattr(dbuser, field, value or None)  # 0 resets to the default
 
     if modify.data_limit_reset_strategy is not None:
         dbuser.data_limit_reset_strategy = modify.data_limit_reset_strategy.value
@@ -1132,6 +1140,9 @@ def create_user_template(db: Session, user_template: UserTemplateCreate) -> User
         expire_duration=user_template.expire_duration,
         username_prefix=user_template.username_prefix,
         username_suffix=user_template.username_suffix,
+        v2ray_json_template_id=user_template.v2ray_json_template_id or None,
+        singbox_template_id=user_template.singbox_template_id or None,
+        clash_template_id=user_template.clash_template_id or None,
         inbounds=db.query(ProxyInbound).filter(ProxyInbound.tag.in_(inbound_tags)).all()
     )
     db.add(dbuser_template)
@@ -1163,6 +1174,9 @@ def update_user_template(
         dbuser_template.username_prefix = modified_user_template.username_prefix
     if modified_user_template.username_suffix is not None:
         dbuser_template.username_suffix = modified_user_template.username_suffix
+    for field in ("v2ray_json_template_id", "singbox_template_id", "clash_template_id"):
+        if (value := getattr(modified_user_template, field)) is not None:
+            setattr(dbuser_template, field, value or None)  # 0 resets to the default
 
     if modified_user_template.inbounds:
         inbound_tags: List[str] = []

@@ -7,8 +7,8 @@ from app.db import Session, crud, get_db
 from app.dependencies import get_validated_sub, validate_dates
 from app.models.user import SubscriptionUserResponse, UserResponse
 from app.subscription.share import encode_title, generate_subscription
-from app.templates import render_template
-from config import SUBSCRIPTION_PAGE_TEMPLATE, XRAY_SUBSCRIPTION_PATH
+from app.subscription import templates
+from config import XRAY_SUBSCRIPTION_PATH
 from app.settings import settings as runtime_settings
 
 client_config = {
@@ -52,10 +52,7 @@ def user_subscription(
     accept_header = request.headers.get("Accept", "")
     if "text/html" in accept_header:
         return HTMLResponse(
-            render_template(
-                SUBSCRIPTION_PAGE_TEMPLATE,
-                {"user": user}
-            )
+            templates.render(templates.TemplateKind.subscription_page, {"user": user})
         )
 
     crud.update_user_sub(db, dbuser, user_agent)

@@ -68,6 +68,7 @@ import { z } from "zod";
 import { useDashboard } from "../contexts/DashboardContext";
 import { DeleteIcon } from "./DeleteUserModal";
 import { Icon } from "./Icon";
+import { TemplateSelect } from "./TemplateSelects";
 import { Input as CustomInput } from "./Input";
 
 export const DuplicateIcon = chakra(DocumentDuplicateIcon, {
@@ -150,6 +151,7 @@ const hostsSchema = z.record(
       alpn: z.string(),
       fingerprint: z.string(),
       use_sni_as_host: z.boolean().default(false),
+      v2ray_json_template_id: z.number().nullable().optional(),
     })
   )
 );
@@ -213,6 +215,7 @@ const AccordionInbound: FC<AccordionInboundType> = ({
       alpn: "",
       fingerprint: "",
       use_sni_as_host: false,
+      v2ray_json_template_id: null,
     });
   };
   const duplicateHost = (index: number) => {
@@ -1063,6 +1066,16 @@ const AccordionInbound: FC<AccordionInboundType> = ({
                           </FormControl>
 
 
+                          <TemplateSelect
+                            kind="v2ray_json"
+                            size="sm"
+                            label={t("subTpl.hostField")}
+                            help={t("subTpl.hostFieldHelp")}
+                            value={form.watch((hostKey + "." + index + ".v2ray_json_template_id") as any) as any}
+                            onChange={(id) =>
+                              form.setValue((hostKey + "." + index + ".v2ray_json_template_id") as any, id as any, { shouldDirty: true })
+                            }
+                          />
                           <FormControl
                             isInvalid={
                               !!(

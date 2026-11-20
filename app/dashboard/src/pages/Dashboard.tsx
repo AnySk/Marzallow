@@ -40,6 +40,9 @@ const AnalyticsModal = lazy(() =>
 const ExpiredCleanupModal = lazy(() =>
   import("components/ExpiredCleanupModal").then((m) => ({ default: m.ExpiredCleanupModal }))
 );
+const SubscriptionTemplatesModal = lazy(() =>
+  import("components/SubscriptionTemplatesModal").then((m) => ({ default: m.SubscriptionTemplatesModal }))
+);
 const NodesUsage = lazy(() =>
   import("components/NodesUsage").then((m) => ({ default: m.NodesUsage }))
 );
@@ -82,6 +85,7 @@ export const Dashboard: FC = () => {
         <AnalyticsModal />
         <ExpiredCleanupModal />
         <SettingsModal />
+        <SubscriptionTemplatesModal />
       </Suspense>
     </AppShell>
   );
