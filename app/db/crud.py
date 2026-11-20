@@ -1603,7 +1603,11 @@ def get_usage_summary(db: Session, start: datetime, end: datetime, admins: Optio
     days = get_daily_usage(db, start, end, admins=admins)
     busiest = max(days, key=lambda d: d["used_traffic"]) if days else None
 
-    new_users = db.query(func.count(User.id)).filter(User.created_at >= start, User.created_at <= end)
+    # created_at has no fractional seconds on MySQL (DATETIME rounds), so a user
+    # created a moment ago can be stored up to half a second after `end`
+    new_users = db.query(func.count(User.id)).filter(
+        User.created_at >= start.replace(tzinfo=None) - timedelta(seconds=1),
+        User.created_at <= end.replace(tzinfo=None) + timedelta(seconds=1))
     if admins:
         new_users = new_users.filter(User.admin.has(Admin.username.in_(admins)))
 
