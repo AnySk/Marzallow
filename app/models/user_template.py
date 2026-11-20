@@ -19,6 +19,12 @@ class UserTemplate(BaseModel):
 
     inbounds: Dict[ProxyTypes, List[str]] = {}
 
+    # subscription templates (app/subscription/templates.py); null uses the default,
+    # and on modify 0 resets to the default
+    v2ray_json_template_id: Optional[int] = Field(None, nullable=True, ge=0)
+    singbox_template_id: Optional[int] = Field(None, nullable=True, ge=0)
+    clash_template_id: Optional[int] = Field(None, nullable=True, ge=0)
+
 
 class UserTemplateCreate(UserTemplate):
     model_config = ConfigDict(json_schema_extra={

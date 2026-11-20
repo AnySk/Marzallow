@@ -7,18 +7,20 @@ import yaml
 from jinja2.exceptions import TemplateNotFound
 
 from app.subscription.funcs import get_grpc_gun
+from app.subscription import templates
 from app.templates import render_template
 from app.utils.helpers import yml_uuid_representer
 from config import (
     CLASH_SETTINGS_TEMPLATE,
-    CLASH_SUBSCRIPTION_TEMPLATE,
     MUX_TEMPLATE,
     USER_AGENT_TEMPLATE,
 )
 
 
 class ClashConfiguration(object):
-    def __init__(self):
+    def __init__(self, template_id: int = None, context: dict = None):
+        self.template_id = template_id
+        self.context = context or {}
         self.data = {
             'proxies': [],
             'proxy-groups': [],
@@ -48,9 +50,10 @@ class ClashConfiguration(object):
         yaml.add_representer(UUID, yml_uuid_representer)
         return yaml.dump(
             yaml.load(
-                render_template(
-                    CLASH_SUBSCRIPTION_TEMPLATE,
-                    {"conf": self.data, "proxy_remarks": self.proxy_remarks}
+                templates.render(
+                    templates.TemplateKind.clash,
+                    {**self.context, "conf": self.data, "proxy_remarks": self.proxy_remarks},
+                    self.template_id,
                 ),
                 Loader=yaml.SafeLoader
 

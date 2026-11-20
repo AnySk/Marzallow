@@ -51,13 +51,19 @@ def generate_v2ray_links(proxies: dict, inbounds: dict, extra_data: dict, revers
     return process_inbounds_and_tags(inbounds, proxies, format_variables, conf=conf, reverse=reverse)
 
 
+def _template_args(extra_data: dict, field: str) -> dict:
+    """The user's template for a format and what templates can use ({{ user.username }} …)."""
+    return {"template_id": extra_data.get(field), "context": {"user": extra_data.get("_user")}}
+
+
 def generate_clash_subscription(
         proxies: dict, inbounds: dict, extra_data: dict, reverse: bool, is_meta: bool = False
 ) -> str:
+    args = _template_args(extra_data, "clash_template_id")
     if is_meta is True:
-        conf = ClashMetaConfiguration()
+        conf = ClashMetaConfiguration(**args)
     else:
-        conf = ClashConfiguration()
+        conf = ClashConfiguration(**args)
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(
@@ -68,7 +74,7 @@ def generate_clash_subscription(
 def generate_singbox_subscription(
         proxies: dict, inbounds: dict, extra_data: dict, reverse: bool
 ) -> str:
-    conf = SingBoxConfiguration()
+    conf = SingBoxConfiguration(**_template_args(extra_data, "singbox_template_id"))
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(
@@ -90,7 +96,7 @@ def generate_outline_subscription(
 def generate_v2ray_json_subscription(
         proxies: dict, inbounds: dict, extra_data: dict, reverse: bool,
 ) -> str:
-    conf = V2rayJsonConfig()
+    conf = V2rayJsonConfig(**_template_args(extra_data, "v2ray_json_template_id"))
 
     format_variables = setup_format_variables(extra_data)
     return process_inbounds_and_tags(
@@ -107,7 +113,7 @@ def generate_subscription(
     kwargs = {
         "proxies": user.proxies,
         "inbounds": user.inbounds,
-        "extra_data": user.__dict__,
+        "extra_data": {**user.__dict__, "_user": user},
         "reverse": reverse,
     }
 
@@ -315,6 +321,7 @@ def process_inbounds_and_tags(
                         "random_user_agent": host["random_user_agent"],
                         "pcs": host.get("pcs") or "",
                         "vcn": host.get("vcn") or "",
+                        "json_template_id": host.get("v2ray_json_template_id"),
                     }
                 )
 

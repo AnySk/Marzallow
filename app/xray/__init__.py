@@ -67,6 +67,7 @@ def hosts(storage: dict):
                     "use_sni_as_host": host.use_sni_as_host,
                     "pcs": host.pinned_peer_cert_sha256,
                     "vcn": host.verify_peer_cert_by_name,
+                    "v2ray_json_template_id": host.v2ray_json_template_id,
                 } for host in inbound_hosts if not host.is_disabled
             ]
 

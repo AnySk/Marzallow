@@ -6,20 +6,23 @@ from app.utils.helpers import UUIDEncoder
 from jinja2.exceptions import TemplateNotFound
 
 from app.subscription.funcs import get_grpc_gun
+from app.subscription import templates
 from app.templates import render_template
 from config import (
     MUX_TEMPLATE,
     SINGBOX_SETTINGS_TEMPLATE,
-    SINGBOX_SUBSCRIPTION_TEMPLATE,
     USER_AGENT_TEMPLATE
 )
 
 
 class SingBoxConfiguration(str):
 
-    def __init__(self):
+    def __new__(cls, *args, **kwargs):  # str subclass: keep str() from seeing our arguments
+        return super().__new__(cls)
+
+    def __init__(self, template_id: int = None, context: dict = None):
         self.proxy_remarks = []
-        self.config = json.loads(render_template(SINGBOX_SUBSCRIPTION_TEMPLATE))
+        self.config = json.loads(templates.render(templates.TemplateKind.singbox, context, template_id))
         self.mux_template = render_template(MUX_TEMPLATE)
         user_agent_data = json.loads(render_template(USER_AGENT_TEMPLATE))
 

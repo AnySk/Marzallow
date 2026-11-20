@@ -13,9 +13,11 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
+    Text,
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql.expression import select, text
@@ -91,6 +93,11 @@ class User(Base):
     # * Negative values: User won't be deleted automatically at all.
     # * NULL: Uses global settings.
     auto_delete_in_days = Column(Integer, nullable=True, default=None)
+
+    # subscription templates (app/subscription/templates.py); NULL uses the default
+    v2ray_json_template_id = Column(Integer, nullable=True, default=None)
+    singbox_template_id = Column(Integer, nullable=True, default=None)
+    clash_template_id = Column(Integer, nullable=True, default=None)
 
     edit_at = Column(DateTime, nullable=True, default=None)
     last_status_change = Column(DateTime, default=datetime.utcnow, nullable=True)
@@ -182,6 +189,9 @@ class UserTemplate(Base):
     expire_duration = Column(BigInteger, default=0)  # in seconds
     username_prefix = Column(String(20), nullable=True)
     username_suffix = Column(String(20), nullable=True)
+    v2ray_json_template_id = Column(Integer, nullable=True, default=None)
+    singbox_template_id = Column(Integer, nullable=True, default=None)
+    clash_template_id = Column(Integer, nullable=True, default=None)
 
     inbounds = relationship(
         "ProxyInbound", secondary=template_inbounds_association
@@ -267,6 +277,8 @@ class ProxyHost(Base):
     # TLS certificate pinning / verification name; replaces allowInsecure, which
     # xray-core removed (share-link params pcs / vcn)
     pinned_peer_cert_sha256 = Column(String(1024), nullable=True)
+    # template for this host's entry in V2Ray JSON subscriptions; NULL uses the user's or the default
+    v2ray_json_template_id = Column(Integer, nullable=True, default=None)
     verify_peer_cert_by_name = Column(String(512), nullable=True)
 
 
@@ -362,5 +374,25 @@ class Setting(Base):
 
     key = Column(String(64), primary_key=True)
     value = Column(JSON, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = Column(String(34), nullable=True)
+
+
+class SubscriptionTemplate(Base):
+    """A subscription template edited in the dashboard (see app/subscription/templates.py).
+
+    The built-in templates (and CUSTOM_TEMPLATES_DIRECTORY files) aren't rows; a
+    row with is_default replaces them for its kind.
+    """
+    __tablename__ = "subscription_templates"
+    __table_args__ = (UniqueConstraint("kind", "name"),)
+
+    id = Column(Integer, primary_key=True)
+    kind = Column(String(32), nullable=False, index=True)
+    name = Column(String(64), nullable=False)
+    description = Column(String(256), nullable=True)
+    content = Column(Text().with_variant(MEDIUMTEXT(), "mysql", "mariadb"), nullable=False)
+    is_default = Column(Boolean, nullable=False, default=False, server_default="0")
+    created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(String(34), nullable=True)

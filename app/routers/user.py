@@ -24,6 +24,7 @@ from app.models.user import (
     UserUsagesResponse,
 )
 from app.utils import report, responses
+from app.routers.subscription_template import check_refs as check_template_refs
 
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
 
@@ -60,6 +61,7 @@ def add_user(
                 detail=f"Protocol {proxy_type} is disabled on your server",
             )
 
+    check_template_refs(db, new_user)
     try:
         dbuser = crud.create_user(
             db, new_user, admin=crud.get_admin(db, admin.username)
@@ -115,6 +117,7 @@ def modify_user(
             )
 
     old_status = dbuser.status
+    check_template_refs(db, modified_user)
     dbuser = crud.update_user(db, dbuser, modified_user)
     user = UserResponse.model_validate(dbuser)
 

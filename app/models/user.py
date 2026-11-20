@@ -77,6 +77,12 @@ class User(BaseModel):
 
     next_plan: Optional[NextPlanModel] = Field(None, nullable=True)
 
+    # subscription templates (app/subscription/templates.py); null uses the default,
+    # and on modify 0 resets to the default
+    v2ray_json_template_id: Optional[int] = Field(None, nullable=True, ge=0)
+    singbox_template_id: Optional[int] = Field(None, nullable=True, ge=0)
+    clash_template_id: Optional[int] = Field(None, nullable=True, ge=0)
+
     @field_validator('data_limit', mode='before')
     def cast_to_int(cls, v):
         if v is None:  # Allow None values
@@ -340,6 +346,9 @@ class SubscriptionUserResponse(UserResponse):
     note: str | None = Field(None, exclude=True)
     inbounds: Dict[ProxyTypes, List[str]] | None = Field(None, exclude=True)
     auto_delete_in_days: int | None = Field(None, exclude=True)
+    v2ray_json_template_id: int | None = Field(None, exclude=True)
+    singbox_template_id: int | None = Field(None, exclude=True)
+    clash_template_id: int | None = Field(None, exclude=True)
     model_config = ConfigDict(from_attributes=True)
 
 
