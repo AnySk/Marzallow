@@ -694,8 +694,8 @@
   "access.ips": "IP ranges",
   "access.ipsHelp": "For apps that connect by IP address without a domain name, e.g. 203.0.113.0/24 or geoip:ru.",
   "access.save": "Save",
-  "access.saved": "Access list saved; the server applies it in a few seconds",
-  "access.policySaved": "Default saved; the server applies it in a few seconds",
+  "access.saved": "Access list saved and applied",
+  "access.policySaved": "Default saved and applied",
   "access.defaultTitle": "Users without an access list",
   "access.defaultHelp": "Applies to everyone who isn't on a list and isn't marked unrestricted.",
   "access.policy.all": "Everything",
@@ -729,5 +729,12 @@
   "access.sniffingTitle": "Domain rules need sniffing",
   "access.enableSniffing": "Turn on sniffing",
   "access.sniffingDone_one": "Sniffing turned on for 1 inbound; the core restarted",
-  "access.sniffingDone_other": "Sniffing turned on for {{count}} inbounds; the core restarted"
+  "access.sniffingDone_other": "Sniffing turned on for {{count}} inbounds; the core restarted",
+  "access.applyError": "The last change hasn't reached the server: {{error}}. Check the core logs; it's retried automatically.",
+  "access.pending": "Applying the latest change…",
+  "access.adminsTitle": "Admins' users",
+  "access.adminsHelp": "Every user an admin owns, including the ones they create later, is held to the admin's list unless you set the user's access yourself.",
+  "access.adminListFor": "Access list for {{name}}'s users",
+  "access.adminNoList": "No list (users follow the default)",
+  "access.adminSaved": "{{name}}'s users updated"
 }

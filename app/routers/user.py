@@ -65,6 +65,9 @@ def add_user(
 
     check_template_refs(db, new_user)
     access_changed = check_access_fields(db, new_user, admin)
+    creator = crud.get_admin(db, admin.username)
+    if creator and creator.access_list_id:
+        access_changed = True  # held to their admin's list: rules must name the new user first
     try:
         dbuser = crud.create_user(
             db, new_user, admin=crud.get_admin(db, admin.username)
@@ -73,7 +76,9 @@ def add_user(
         db.rollback()
         raise HTTPException(status_code=409, detail="User already exists")
 
-    bg.add_task(xray.operations.add_user, dbuser=dbuser)
+    if not access_changed:
+        bg.add_task(xray.operations.add_user, dbuser=dbuser)
+    # else: added by the restart below, together with the rules that limit them
     user = UserResponse.model_validate(dbuser)
     report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
     logger.info(f'New user "{dbuser.username}" added')
@@ -129,7 +134,10 @@ def modify_user(
         access.schedule_restart()
     user = UserResponse.model_validate(dbuser)
 
-    if user.status in [UserStatus.active, UserStatus.on_hold]:
+    if access_changed:
+        # out of Xray until the restart brings them back with their new rules
+        bg.add_task(xray.operations.remove_user, dbuser=dbuser)
+    elif user.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.update_user, dbuser=dbuser)
     else:
         bg.add_task(xray.operations.remove_user, dbuser=dbuser)
@@ -458,6 +466,7 @@ def get_users_usage(
 @router.put("/user/{username}/set-owner", response_model=UserResponse)
 def set_owner(
     admin_username: str,
+    bg: BackgroundTasks,
     dbuser: UserResponse = Depends(get_validated_user),
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.check_sudo_admin),
@@ -467,7 +476,12 @@ def set_owner(
     if not new_admin:
         raise HTTPException(status_code=404, detail="Admin not found")
 
+    access_moved = (dbuser.admin.access_list_id if dbuser.admin else None) != new_admin.access_list_id
     dbuser = crud.set_owner(db, dbuser, new_admin)
+    if access_moved and not (dbuser.access_list_id or dbuser.access_unrestricted):
+        # the admin's list applies to this user: out of Xray until the rules follow
+        bg.add_task(xray.operations.remove_user, dbuser=dbuser)
+        access.schedule_restart()
     user = UserResponse.model_validate(dbuser)
 
     logger.info(f'{user.username}"owner successfully set to{admin.username}')

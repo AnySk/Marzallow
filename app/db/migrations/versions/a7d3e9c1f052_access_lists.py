@@ -25,12 +25,16 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(), nullable=True),
         sa.Column('updated_at', sa.DateTime(), nullable=True),
     )
+    # an admin's list applies to every user they own (the user's own setting wins)
+    op.add_column('admins', sa.Column('access_list_id', sa.Integer(), nullable=True))
     for table in ('users', 'user_templates'):
         op.add_column(table, sa.Column('access_list_id', sa.Integer(), nullable=True))
         op.add_column(table, sa.Column('access_unrestricted', sa.Boolean(), nullable=False, server_default=sa.false()))
 
 
 def downgrade() -> None:
+    with op.batch_alter_table('admins') as batch:
+        batch.drop_column('access_list_id')
     for table in ('users', 'user_templates'):
         with op.batch_alter_table(table) as batch:
             batch.drop_column('access_unrestricted')

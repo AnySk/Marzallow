@@ -106,7 +106,7 @@ def test_end_to_end_rules(client, auth, make_user, lists, restarts):
     u3 = make_user("acc_user3")
     assert client.put(f"/api/user/{u3['username']}", headers=auth, json={"access_list_id": b["id"]}).status_code == 200
     assert client.put("/api/settings", headers=auth, json={"ACCESS_DEFAULT_POLICY": "except_listed"}).status_code == 200
-    assert len(restarts) >= 4  # lists, users and the policy all restart the core
+    assert len(restarts) >= 2  # user changes restart the core shortly after (lists/policy apply at once)
 
     rules = client.get("/api/access-lists/rules", headers=auth).json()["rules"]
     emails = {r: next(x for x in sum((rr.get("user", []) for rr in rules), []) if x.endswith("." + r))
@@ -169,3 +169,69 @@ def test_enable_sniffing(client, auth):
     config = client.get("/api/core/config", headers=auth).json()
     assert all(i["sniffing"]["destOverride"] == ["http", "tls", "quic"] for i in config["inbounds"])
     assert client.post("/api/access-lists/enable-sniffing", headers=auth).json()["changed"] == []
+
+
+def test_admin_list_binds_every_user_they_own(client, auth, lists, restarts, monkeypatch):
+    """A non-sudo admin can't get round a list by recreating users."""
+    from app.xray import operations
+
+    added = []
+    monkeypatch.setattr(operations, "add_user", lambda dbuser: added.append(dbuser.username))
+    lst = lists("reseller list", ["qwer.qwer"])
+    assert client.post("/api/admin", headers=auth, json={"username": "acc_res2", "password": "resellerpass2", "is_sudo": False}).status_code == 200
+    try:
+        assert client.put("/api/access-lists/admins/acc_res2", headers=auth, json={"access_list_id": lst["id"]}).status_code == 200
+        token = client.post("/api/admin/token", data={"username": "acc_res2", "password": "resellerpass2"}).json()["access_token"]
+        h = {"Authorization": f"Bearer {token}"}
+        for attempt in range(2):  # create, delete, create again: still on the list
+            r = client.post("/api/user", headers=h, json={"username": "acc_res_user", "proxies": {"vless": {}}})
+            assert r.status_code == 200, r.text
+            assert "acc_res_user" not in added  # kept out of Xray until the rules name it
+            rules = client.get("/api/access-lists/rules", headers=auth).json()["rules"]
+            email = next(u for rule in rules for u in rule.get("user", []) if u.endswith(".acc_res_user"))
+            assert _route(rules, email, "example.com") == "BLOCK"
+            assert _route(rules, email, "qwer.qwer") == "DIRECT"
+            if attempt == 0:
+                assert client.delete("/api/user/acc_res_user", headers=h).status_code == 200
+        overview = client.get("/api/access-lists", headers=auth).json()
+        assert {a["username"]: a["access_list_id"] for a in overview["admins"]}["acc_res2"] == lst["id"]
+    finally:
+        client.delete("/api/user/acc_res_user", headers=auth)
+        client.delete("/api/admin/acc_res2", headers=auth)
+
+
+def test_access_change_takes_user_out_until_restart(client, auth, make_user, lists, restarts, monkeypatch):
+    from app.xray import operations
+
+    removed, updated = [], []
+    monkeypatch.setattr(operations, "remove_user", lambda dbuser: removed.append(dbuser.username))
+    monkeypatch.setattr(operations, "update_user", lambda dbuser: updated.append(dbuser.username))
+    lst = lists("narrow", ["qwer.qwer"])
+    make_user("acc_move", access_unrestricted=True)
+    before = len(restarts)
+    assert client.put("/api/user/acc_move", headers=auth, json={"access_unrestricted": False, "access_list_id": lst["id"]}).status_code == 200
+    assert removed == ["acc_move"] and updated == [] and len(restarts) == before + 1
+    # an unrelated edit doesn't touch access
+    assert client.put("/api/user/acc_move", headers=auth, json={"note": "x", "access_list_id": lst["id"]}).status_code == 200
+    assert updated == ["acc_move"] and len(restarts) == before + 1
+
+
+def test_apply_failure_is_reported_and_retried(client, auth, lists, restarts, monkeypatch):
+    def broken():
+        raise RuntimeError("xray didn't start")
+    monkeypatch.setattr(access, "apply_now", broken)
+    r = client.post("/api/access-lists", headers=auth, json={"name": "will fail", "domains": ["a.b"]})
+    assert r.status_code == 502 and "retrying" in r.text
+    assert restarts  # retried in the background
+    client.delete("/api/access-lists/" + str(next(l["id"] for l in client.get("/api/access-lists", headers=auth).json()["lists"] if l["name"] == "will fail")), headers=auth)
+
+
+def test_retries_then_reports(monkeypatch):
+    calls, delays = [], []
+    monkeypatch.setattr(access, "apply_now", lambda: (calls.append(1), (_ for _ in ()).throw(RuntimeError("down")))[1])
+    monkeypatch.setattr(access, "_start", lambda delay, attempt=0: delays.append(delay) or access._run(attempt))
+    access.status.update(pending=True, error=None)
+    access._run(0)
+    assert len(calls) == 1 + len(access.RETRY_DELAYS) and delays == list(access.RETRY_DELAYS)
+    assert access.status == {"pending": False, "error": "down"}
+    access.status.update(pending=False, error=None)

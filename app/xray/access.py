@@ -102,7 +102,7 @@ def build_rules(users: List[tuple], lists: Dict[int, dict], policy: str, allow: 
 
 def apply(config: dict, db) -> None:
     """Add the access rules for the users in `config` (called by include_db_users)."""
-    from app.db.models import AccessList, User
+    from app.db.models import AccessList, Admin, User
     from app.settings import settings
 
     policy = settings.ACCESS_DEFAULT_POLICY
@@ -111,11 +111,15 @@ def apply(config: dict, db) -> None:
     # every user with an access setting, whatever their status: a disabled user
     # who is enabled again is added to Xray without a restart and must already
     # be covered by the rules
+    # A user's own setting wins; otherwise their admin's list applies (so an
+    # admin can't get round a list by recreating users).
     users = [
-        (f"{uid}.{username}", list_id, bool(free))
-        for uid, username, list_id, free in db.query(
-            User.id, User.username, User.access_list_id, User.access_unrestricted
-        ).filter((User.access_list_id.isnot(None)) | (User.access_unrestricted.is_(True))).all()
+        (f"{uid}.{username}", list_id or admin_list, bool(free))
+        for uid, username, list_id, free, admin_list in db.query(
+            User.id, User.username, User.access_list_id, User.access_unrestricted, Admin.access_list_id
+        ).outerjoin(Admin, User.admin_id == Admin.id).filter(
+            (User.access_list_id.isnot(None)) | (User.access_unrestricted.is_(True)) | (Admin.access_list_id.isnot(None))
+        ).all()
     ]
     if policy == "all" and not any(list_id in lists for _, list_id, free in users if not free):
         return  # nothing to enforce
@@ -149,28 +153,54 @@ def warnings(config: dict) -> List[str]:
 
 _timer: Optional[threading.Timer] = None
 _timer_lock = threading.Lock()
+# what the Access lists page shows: a change waiting to be applied, or the last failure
+status = {"pending": False, "error": None}
+RETRY_DELAYS = (5, 15, 60)
 
 
-def _restart():
+def apply_now() -> None:
+    """Restart the core and nodes with the current rules. Raises on failure."""
     from app import logger, xray
 
+    config = xray.config.include_db_users()
+    xray.core.restart(config)
+    if not xray.core.started:
+        raise RuntimeError("Xray didn't start with the new rules; check the core logs")
+    for node_id, node in list(xray.nodes.items()):
+        if node.connected:
+            xray.operations.restart_node(node_id, config)
+    status.update(pending=False, error=None)
+    logger.info("Xray restarted to apply access list changes")
+
+
+def _run(attempt: int = 0) -> None:
+    from app import logger
+
     try:
-        config = xray.config.include_db_users()
-        xray.core.restart(config)
-        for node_id, node in list(xray.nodes.items()):
-            if node.connected:
-                xray.operations.restart_node(node_id, config)
-        logger.info("Xray restarted to apply access list changes")
-    except Exception as exc:  # pragma: no cover - logged, retried on the next change
-        logger.error(f"Applying access list changes failed: {exc}")
+        apply_now()
+    except Exception as exc:
+        status["error"] = str(exc)
+        if attempt < len(RETRY_DELAYS):
+            logger.error(f"Applying access list changes failed, retrying in {RETRY_DELAYS[attempt]}s: {exc}")
+            _start(RETRY_DELAYS[attempt], attempt + 1)
+        else:
+            status["pending"] = False
+            logger.error(f"Applying access list changes failed: {exc}")
 
 
-def schedule_restart(delay: float = 2.0) -> None:
-    """Restart the core (and nodes) shortly, once for a burst of changes."""
+def _start(delay: float, attempt: int = 0) -> None:
     global _timer
     with _timer_lock:
         if _timer:
             _timer.cancel()
-        _timer = threading.Timer(delay, _restart)
+        _timer = threading.Timer(delay, _run, args=(attempt,))
         _timer.daemon = True
         _timer.start()
+
+
+def schedule_restart(delay: float = 2.0) -> None:
+    """Restart the core (and nodes) shortly, once for a burst of changes, with
+    retries. Users whose own access changed are kept out of Xray until then
+    (see the user routes), so nobody runs with wider access than intended."""
+    status["pending"] = True
+    _start(delay)

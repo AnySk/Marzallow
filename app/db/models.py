@@ -48,6 +48,8 @@ class Admin(Base):
     discord_webhook = Column(String(1024), nullable=True, default=None)
     users_usage = Column(BigInteger, nullable=False, default=0)
     last_login_at = Column(DateTime, nullable=True, default=None)
+    # every user this admin owns is held to this access list (app/xray/access.py)
+    access_list_id = Column(Integer, nullable=True, default=None)
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
 
 

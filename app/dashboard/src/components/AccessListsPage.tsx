@@ -54,11 +54,25 @@ export type AccessListInfo = {
   users: number;
   user_templates: number;
 };
-export type AccessOverview = { policy: AccessPolicy; unrestricted_users: number; lists: AccessListInfo[]; warnings: string[] };
+export type AccessOverview = {
+  policy: AccessPolicy;
+  unrestricted_users: number;
+  lists: AccessListInfo[];
+  admins: { username: string; is_sudo: boolean; access_list_id: number | null }[];
+  warnings: string[];
+  pending: boolean;
+  apply_error: string | null;
+};
 export const AccessQueryKey = ["access-lists"];
 
 export const useAccess = (enabled = true) =>
-  useQuery({ queryKey: AccessQueryKey, queryFn: () => fetch<AccessOverview>("/access-lists"), enabled });
+  useQuery({
+    queryKey: AccessQueryKey,
+    queryFn: () => fetch<AccessOverview>("/access-lists"),
+    enabled,
+    // follow a pending change until the server has applied it
+    refetchInterval: (query) => (query.state.data?.pending ? 2000 : false),
+  });
 
 const POLICIES: AccessPolicy[] = ["all", "except_listed", "none"];
 const lines = (text: string) => text.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
@@ -162,6 +176,13 @@ export const AccessListsPage: FC = () => {
   });
 
   const [fixing, setFixing] = useState(false);
+  const setAdminList = (username: string, listId: number) =>
+    fetch(`/access-lists/admins/${username}`, { method: "PUT", body: { access_list_id: listId } })
+      .then(() => {
+        qc.invalidateQueries({ queryKey: AccessQueryKey });
+        generateSuccessMessage(t("access.adminSaved", { name: username }), toast);
+      })
+      .catch((e) => generateErrorMessage(e, toast));
   const enableSniffing = () => {
     setFixing(true);
     fetch<{ changed: string[] }>("/access-lists/enable-sniffing", { method: "POST" })
@@ -196,6 +217,18 @@ export const AccessListsPage: FC = () => {
         <Spinner />
       ) : (
         <>
+          {data.apply_error && (
+            <Alert status="error">
+              <AlertIcon />
+              {t("access.applyError", { error: data.apply_error })}
+            </Alert>
+          )}
+          {data.pending && !data.apply_error && (
+            <Alert status="info">
+              <AlertIcon />
+              {t("access.pending")}
+            </Alert>
+          )}
           {data.warnings.some((w) => /sniffing/.test(w)) && (
             <Alert status="warning" alignItems="flex-start">
               <AlertIcon />
@@ -269,6 +302,29 @@ export const AccessListsPage: FC = () => {
                 </Panel>
               ))}
             </SimpleGrid>
+          )}
+
+          {data.admins.some((a) => !a.is_sudo) && (
+            <Panel p={5}>
+              <Text fontWeight={650} fontSize="15px">{t("access.adminsTitle")}</Text>
+              <Help mb={3}>{t("access.adminsHelp")}</Help>
+              <VStack align="stretch" spacing={0}>
+                {data.admins.filter((a) => !a.is_sudo).map((a) => (
+                  <Flex key={a.username} align="center" justify="space-between" gap={3} py={2} borderBottomWidth="1px" borderColor="border-subtle" _last={{ borderBottomWidth: 0 }}>
+                    <Text fontWeight={500}>{a.username}</Text>
+                    <chakra.select
+                      aria-label={t("access.adminListFor", { name: a.username })}
+                      value={a.access_list_id || ""}
+                      onChange={(e) => setAdminList(a.username, Number(e.target.value) || 0)}
+                      h="32px" px={3} w={{ base: "180px", md: "260px" }} borderWidth="1px" borderColor="border-strong" borderRadius="md" bg="surface" fontSize="13px"
+                    >
+                      <option value="">{t("access.adminNoList")}</option>
+                      {data.lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </chakra.select>
+                  </Flex>
+                ))}
+              </VStack>
+            </Panel>
           )}
 
           <Panel p={4}>

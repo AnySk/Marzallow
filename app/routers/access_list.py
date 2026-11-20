@@ -8,7 +8,7 @@ from sqlalchemy import func
 
 from app import logger, xray
 from app.db import Session, get_db
-from app.db.models import AccessList, User, UserTemplate
+from app.db.models import AccessList, Admin as DBAdmin, User, UserTemplate
 from app.models.admin import Admin
 from app.settings import settings
 from app.utils import responses
@@ -54,11 +54,20 @@ class AccessListInfo(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class AdminAccess(BaseModel):
+    username: str
+    is_sudo: bool
+    access_list_id: Optional[int] = None
+
+
 class AccessOverview(BaseModel):
     policy: str
     unrestricted_users: int
     lists: List[AccessListInfo]
+    admins: List[AdminAccess]
     warnings: List[str]
+    pending: bool = False   # a change is waiting to be applied
+    apply_error: Optional[str] = None
 
 
 def _counts(db: Session, model):
@@ -70,6 +79,16 @@ def _info(row: AccessList, users: dict, templates: dict) -> AccessListInfo:
     return AccessListInfo(id=row.id, name=row.name, description=row.description, domains=row.domains or [],
                           ips=row.ips or [], users=users.get(row.id, 0), user_templates=templates.get(row.id, 0),
                           updated_at=row.updated_at)
+
+
+def _apply() -> None:
+    """Apply list changes right away (they're rare); on failure keep retrying in
+    the background and tell the caller."""
+    try:
+        access.apply_now()
+    except Exception as exc:
+        access.schedule_restart(access.RETRY_DELAYS[0])
+        raise HTTPException(status_code=502, detail=f"Saved, but the server couldn't apply it yet ({exc}); retrying")
 
 
 def _get(db: Session, list_id: int) -> AccessList:
@@ -104,8 +123,32 @@ def get_access_lists(db: Session = Depends(get_db), admin: Admin = Depends(Admin
         policy=settings.ACCESS_DEFAULT_POLICY,
         unrestricted_users=unrestricted,
         lists=[_info(r, users, templates) for r in db.query(AccessList).order_by(AccessList.name).all()],
+        admins=[AdminAccess(username=a.username, is_sudo=a.is_sudo, access_list_id=a.access_list_id)
+                for a in db.query(DBAdmin).order_by(DBAdmin.username).all()],
         warnings=access.warnings(xray.config),
+        pending=access.status["pending"],
+        apply_error=access.status["error"],
     )
+
+
+class AdminAccessModify(BaseModel):
+    access_list_id: int = Field(ge=0)  # 0 = none
+
+
+@router.put("/access-lists/admins/{username}", response_model=AdminAccess)
+def set_admin_access(username: str, body: AdminAccessModify, db: Session = Depends(get_db),
+                     admin: Admin = Depends(Admin.check_sudo_admin)):
+    """Hold every user an admin owns (now and later) to an access list."""
+    target = db.query(DBAdmin).filter_by(username=username).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    if body.access_list_id:
+        _get(db, body.access_list_id)
+    target.access_list_id = body.access_list_id or None
+    db.commit()
+    logger.info(f'Access list of admin "{username}" set to {target.access_list_id} by {admin.username}')
+    _apply()
+    return AdminAccess(username=target.username, is_sudo=target.is_sudo, access_list_id=target.access_list_id)
 
 
 @router.get("/access-lists/rules")
@@ -126,7 +169,7 @@ def add_access_list(body: AccessListCreate, db: Session = Depends(get_db),
     db.commit()
     db.refresh(row)
     logger.info(f'Access list "{row.name}" added by {admin.username}')
-    access.schedule_restart()
+    _apply()
     return _info(row, {}, {})
 
 
@@ -148,7 +191,7 @@ def modify_access_list(list_id: int, body: AccessListBase, db: Session = Depends
     db.commit()
     db.refresh(row)
     logger.info(f'Access list "{row.name}" modified by {admin.username}')
-    access.schedule_restart()
+    _apply()
     return _info(row, _counts(db, User), _counts(db, UserTemplate))
 
 
@@ -163,12 +206,12 @@ def remove_access_list(
     target = _get(db, move_to) if move_to else None
     if target and target.id == row.id:
         raise HTTPException(status_code=400, detail="move_to must be another list")
-    for model in (User, UserTemplate):
+    for model in (User, UserTemplate, DBAdmin):
         db.query(model).filter(model.access_list_id == row.id).update({model.access_list_id: target.id if target else None})
     db.delete(row)
     db.commit()
     logger.info(f'Access list "{row.name}" deleted by {admin.username}')
-    access.schedule_restart()
+    _apply()
     return {}
 
 
