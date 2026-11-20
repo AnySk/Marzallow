@@ -10,6 +10,7 @@ import {
   Select as ChakraSelect,
   Checkbox,
   Container,
+  Flex,
   FormControl,
   FormErrorMessage,
   FormLabel,
@@ -68,6 +69,7 @@ import { z } from "zod";
 import { useDashboard } from "../contexts/DashboardContext";
 import { DeleteIcon } from "./DeleteUserModal";
 import { Icon } from "./Icon";
+import { PageHeader, Panel } from "./ui";
 import { TemplateSelect } from "./TemplateSelects";
 import { Input as CustomInput } from "./Input";
 
@@ -165,6 +167,8 @@ const Error = chakra(FormErrorMessage, {
   },
 });
 
+const REMARK_VARS = ["USERNAME", "DATA_LEFT", "DAYS_LEFT", "EXPIRE_DATE", "PROTOCOL", "TRANSPORT"];
+
 type AccordionInboundType = {
   hostKey: string;
   isOpen: boolean;
@@ -238,27 +242,26 @@ const AccordionInbound: FC<AccordionInboundType> = ({
   };
 
   return (
-    <AccordionItem
-      border="1px solid"
-      borderColor="border"
-      borderRadius="4px"
-      p={1}
-      w="full"
-    >
-      <AccordionButton px={2} borderRadius="3px" onClick={toggleAccordion}>
-        <Text
-          as="span"
-          fontWeight="medium"
-          fontSize="sm"
-          flex="1"
-          textAlign="left"
-          color="text-2"
-        >
-          {hostKey}
-        </Text>
-        <AccordionIcon />
-      </AccordionButton>
-      <AccordionPanel px={2} pb={2}>
+    <Box w="full">
+      <Flex justify="space-between" align="center" mb={3} gap={3} wrap="wrap">
+        <Box>
+          <Text fontWeight={650} fontSize="15px" fontFamily="mono">
+            {hostKey}
+          </Text>
+          <Text fontSize="12px" color="text-muted">
+            {t("hostsPage.hostsCount", { count: hosts.length })} · {t("hostsPage.reorderHint")}
+          </Text>
+        </Box>
+        <Button size="sm" colorScheme="primary" variant="outline" onClick={handleAddHost}>
+          {t("hostsDialog.addHost")}
+        </Button>
+      </Flex>
+      {hosts.length === 0 && (
+        <Box borderWidth="1px" borderStyle="dashed" borderColor="warning-border" bg="warning-bg" color="warning-fg" borderRadius="md" p={4} fontSize="13px">
+          {t("hostsPage.noHosts", { protocol: inbound?.protocol?.toUpperCase?.() || "" })}
+        </Box>
+      )}
+      <Box>
         <VStack gap={3}>
           {hosts.map((host, index) => {
             return (
@@ -412,6 +415,20 @@ const AccordionInbound: FC<AccordionInboundType> = ({
                       {accordionErrors && accordionErrors[index]?.remark && (
                         <Error>{accordionErrors[index]?.remark?.message}</Error>
                       )}
+                      <Flex gap={1} wrap="wrap" mt="6px" align="center">
+                        <Text fontSize="11px" color="text-muted" mr={1}>
+                          {t("hostsPage.insert")}
+                        </Text>
+                        {REMARK_VARS.map((v) => (
+                          <Button key={v} size="xs" h="20px" px="6px" variant="outline" fontFamily="mono" fontSize="11px" fontWeight={500}
+                            onClick={() => {
+                              const field = (hostKey + "." + index + ".remark") as any;
+                              (form.setValue as any)(field, (((form.getValues as any)(field) as string) || "") + `{${v}}`, { shouldDirty: true });
+                            }}>
+                            {`{${v}}`}
+                          </Button>
+                        ))}
+                      </Flex>
                     </FormControl>
                   </HStack>
                   <FormControl
@@ -1295,146 +1312,134 @@ const AccordionInbound: FC<AccordionInboundType> = ({
             {t("hostsDialog.addHost")}
           </Button>
         </VStack>
-      </AccordionPanel>
-    </AccordionItem>
+      </Box>
+    </Box>
   );
 };
 
 export const HostsDialog: FC = () => {
-  const { isEditingHosts, onEditingHosts, refetchUsers, inbounds } =
-    useDashboard();
+  const { refetchUsers, inbounds } = useDashboard();
   const { isLoading, hosts, fetchHosts, isPostLoading, setHosts } = useHosts();
   const toast = useToast();
   const { t } = useTranslation();
-  const [openAccordions, setOpenAccordions] = useState<any>({});
+  const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isEditingHosts) fetchHosts();
-  }, [isEditingHosts]);
+    fetchHosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const form = useForm<z.infer<typeof hostsSchema>>({
     resolver: zodResolver(hostsSchema) as Resolver<z.infer<typeof hostsSchema>>,
   });
-
   useEffect(() => {
-    if (hosts && isEditingHosts) {
+    if (hosts) {
       form.reset(hosts);
+      if (!selected) setSelected(Object.keys(hosts)[0] || null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hosts]);
 
-  const onClose = () => {
-    setOpenAccordions({});
-    onEditingHosts(false);
-  };
-  const handleFormSubmit = (hosts: z.infer<typeof hostsSchema>) => {
-    setHosts(hosts)
+  const values = form.watch();
+  const dirty = form.formState.dirtyFields as Record<string, any[] | undefined>;
+  const changedHosts = Object.entries(dirty).reduce((n, [, list]) => n + (Array.isArray(list) ? list.filter(Boolean).length : 0), 0);
+  // added hosts show up as dirty entries; removals only as a shorter list
+  const removed = hosts ? Object.keys(hosts).reduce((n, k) => n + Math.max(0, hosts[k].length - ((values as any)[k]?.length ?? 0)), 0) : 0;
+  const unsaved = changedHosts + removed;
+  const errors = form.formState.errors as Record<string, unknown>;
+  const allInbounds = [...inbounds.values()].flat();
+
+  const handleFormSubmit = (data: z.infer<typeof hostsSchema>) => {
+    setHosts(data)
       .then(() => {
-        toast({
-          title: t("hostsDialog.savedSuccess"),
-          status: "success",
-          isClosable: true,
-          position: "top",
-          duration: 3000,
-        });
+        toast({ title: t("hostsDialog.savedSuccess"), status: "success", isClosable: true, position: "top", duration: 3000 });
         refetchUsers();
       })
       .catch((err) => {
-        if (err?.response?.status === 409 || err?.response?.status === 400) {
-          toast({
-            title: err.response?._data?.detail,
-            status: "error",
-            isClosable: true,
-            position: "top",
-            duration: 3000,
-          });
-        }
-        if (err?.response?.status === 422) {
-          Object.keys(err.response._data.detail).forEach((key) => {
-            toast({
-              title: err.response._data.detail[key] + " (" + key + ")",
-              status: "error",
-              isClosable: true,
-              position: "top",
-              duration: 3000,
-            });
-          });
-        }
+        if (err?.response?.status === 409 || err?.response?.status === 400)
+          toast({ title: err.response?._data?.detail, status: "error", isClosable: true, position: "top", duration: 3000 });
+        if (err?.response?.status === 422)
+          Object.keys(err.response._data.detail).forEach((key) =>
+            toast({ title: err.response._data.detail[key] + " (" + key + ")", status: "error", isClosable: true, position: "top", duration: 3000 })
+          );
       });
   };
-
-  const toggleAccordion = (index: number) => {
-    if (openAccordions[String(index)]) {
-      delete openAccordions[String(index)];
-    } else openAccordions[String(index)] = {};
-
-    setOpenAccordions({ ...openAccordions });
+  // jump to the first inbound with an error when saving fails validation
+  const onInvalid = (errs: Record<string, unknown>) => {
+    const first = Object.keys(errs)[0];
+    if (first) setSelected(first);
   };
 
   return (
-    <Modal isOpen={isEditingHosts} onClose={onClose}>
-      <ModalOverlay />
-      <ModalContent mx="3" w="fit-content" maxW="3xl">
-        <ModalHeader pt={5}>
-          <HStack spacing={3}>
-            <Icon color="primary">
-              <ModalIcon />
-            </Icon>
-            <Text fontSize="17px" fontWeight={700}>
-              {t("nav.hosts")}
-            </Text>
-          </HStack>
-        </ModalHeader>
-        <ModalCloseButton mt={3} />
-        <ModalBody w="440px" pb={3} pt={3}>
-          <FormProvider {...form}>
-            <form onSubmit={form.handleSubmit(handleFormSubmit)}>
-              <Text mb={3} opacity={0.8} fontSize="sm">
-                {t("hostsDialog.title")}
+    <FormProvider {...form}>
+      <chakra.form display="contents" onSubmit={form.handleSubmit(handleFormSubmit, onInvalid as any)}>
+        <PageHeader
+          title={t("nav.hosts")}
+          subtitle={t("hostsPage.subtitle")}
+          actions={
+            <>
+              {unsaved > 0 && (
+                <Text fontSize="13px" color="warning-fg">
+                  {t("settings.unsaved", { count: unsaved })}
+                </Text>
+              )}
+              <Button variant="outline" isDisabled={!unsaved} onClick={() => hosts && form.reset(hosts)}>
+                {t("settings.discard")}
+              </Button>
+              <Button type="submit" colorScheme="primary" isLoading={isPostLoading} isDisabled={!unsaved}>
+                {t("hostsPage.save")}
+              </Button>
+            </>
+          }
+        />
+        {isLoading || !hosts ? (
+          <Text color="text-muted">{t("hostsDialog.loading")}</Text>
+        ) : Object.keys(hosts).length === 0 ? (
+          <Panel p={6}>
+            <Text>{t("hostsPage.noInbounds")}</Text>
+          </Panel>
+        ) : (
+          <Flex gap={4} direction={{ base: "column", lg: "row" }} align="flex-start">
+            <Panel as="nav" aria-label={t("hostsPage.inbounds")} w={{ base: "full", lg: "300px" }} flex="none" p={2} position={{ lg: "sticky" }} top={4}>
+              <Text fontSize="11px" fontWeight={600} letterSpacing=".06em" textTransform="uppercase" color="text-muted" px={2} pt={1} pb={2}>
+                {t("hostsPage.inbounds")}
               </Text>
-              {isLoading && t("hostsDialog.loading")}
-              {!isLoading &&
-                hosts &&
-                (Object.keys(hosts).length > 0 ? (
-                  <Accordion
-                    w="full"
-                    allowToggle
-                    allowMultiple
-                    index={Object.keys(openAccordions).map((i) => parseInt(i))}
-                  >
-                    <VStack w="full">
-                      {Object.keys(hosts).map((hostKey, index) => {
-                        return (
-                          <AccordionInbound
-                            toggleAccordion={() => toggleAccordion(index)}
-                            isOpen={openAccordions[String(index)]}
-                            key={hostKey}
-                            hostKey={hostKey}
-                          />
-                        );
-                      })}
-                    </VStack>
-                  </Accordion>
-                ) : (
-                  "No inbound found. Please check your Xray config file."
-                ))}
-
-              <HStack justifyContent="flex-end" py={2}>
-                <Button
-                  variant="solid"
-                  mt="2"
-                  type="submit"
-                  colorScheme="primary"
-                  size="sm"
-                  px={5}
-                  isLoading={isPostLoading}
-                  disabled={isPostLoading}
-                >
-                  {t("hostsDialog.apply")}
-                </Button>
-              </HStack>
-            </form>
-          </FormProvider>
-        </ModalBody>
-      </ModalContent>
-    </Modal>
+              {Object.keys(hosts).map((tag) => {
+                const inbound = allInbounds.find((i) => i.tag === tag);
+                const count = ((values as any)[tag] || []).length;
+                const on = tag === selected;
+                return (
+                  <Box key={tag} as="button" type="button" w="full" textAlign="left" px={3} py={2} borderRadius="md"
+                    bg={on ? "accent-soft" : "transparent"} _hover={{ bg: on ? "accent-soft" : "surface-hover" }}
+                    onClick={() => setSelected(tag)} aria-current={on ? "true" : undefined}>
+                    <Flex justify="space-between" gap={2}>
+                      <Text fontWeight={600} fontSize="13px" fontFamily="mono" color={on ? "accent-text" : "text"} noOfLines={1}>
+                        {tag}
+                      </Text>
+                      <HStack spacing={1}>
+                        {errors[tag] ? <Box w="8px" h="8px" borderRadius="full" bg="danger-dot" /> : null}
+                        {(dirty[tag] || []).some(Boolean) ? <Box w="6px" h="6px" borderRadius="full" bg="warning-dot" /> : null}
+                        <Text fontSize="12px" color={count ? "text-muted" : "warning-fg"} fontWeight={count ? 400 : 600}>
+                          {count}
+                        </Text>
+                      </HStack>
+                    </Flex>
+                    {inbound && (
+                      <Text fontSize="12px" color="text-muted">
+                        {[inbound.protocol, inbound.network, inbound.tls, inbound.port && `:${inbound.port}`].filter(Boolean).join(" · ")}
+                      </Text>
+                    )}
+                  </Box>
+                );
+              })}
+            </Panel>
+            <Panel flex={1} minW={0} w="full" p={{ base: 3, md: 5 }}>
+              {selected && <AccordionInbound key={selected} hostKey={selected} isOpen toggleAccordion={() => {}} />}
+            </Panel>
+          </Flex>
+        )}
+      </chakra.form>
+    </FormProvider>
   );
 };
+
+export default HostsDialog;

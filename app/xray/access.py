@@ -1,0 +1,261 @@
+"""Access lists: which sites each user may reach, enforced by the server.
+
+Every user is either
+- unrestricted (may reach anything),
+- on an access list (may reach only that list's domains and IP ranges), or
+- on the default policy (ACCESS_DEFAULT_POLICY):
+    all            anything (no rules are added)
+    except_listed  anything except the domains/IPs that appear in any list
+    none           nothing
+
+The rules are Xray routing rules matched on the user's identity in the
+server config ("<id>.<username>", the client email the panel sets). They are
+added after the config's own rules, so its safety rules (private IPs,
+BitTorrent …) still apply to everyone, and they are regenerated every time
+the config is built (core start/restart, nodes), so they follow users being
+created, changed and deleted.
+
+Domain rules need sniffing on the inbounds, or Xray only sees IP addresses.
+"""
+import ipaddress
+import threading
+from collections import defaultdict
+from typing import Dict, List, Optional
+
+DOMAIN_PREFIXES = ("domain:", "full:", "regexp:", "keyword:", "geosite:", "ext:")
+IP_PREFIXES = ("geoip:", "ext:")
+BLOCK_TAG = "access-blocked"
+CATCH_ALL = {"network": "tcp,udp"}
+# rule fields that narrow what a rule matches; a rule with none of these matches everything
+_CONDITIONS = ("domain", "ip", "port", "sourcePort", "source", "sourceIP", "user", "inboundTag",
+               "protocol", "attrs", "localIP", "localPort", "vlessRoute", "process")
+
+
+def normalize_domain(entry: str) -> str:
+    entry = entry.strip().lower()
+    if not entry:
+        raise ValueError("empty domain")
+    if entry.startswith(DOMAIN_PREFIXES):
+        return entry
+    if entry.startswith(("http://", "https://")) or "/" in entry or " " in entry:
+        raise ValueError(f"{entry!r} isn't a domain (write it without http:// and paths)")
+    return "domain:" + entry.lstrip("*.").lstrip(".")
+
+
+def normalize_ip(entry: str) -> str:
+    entry = entry.strip()
+    if not entry:
+        raise ValueError("empty IP range")
+    if entry.startswith(IP_PREFIXES):
+        return entry
+    try:
+        return str(ipaddress.ip_network(entry, strict=False))
+    except ValueError:
+        raise ValueError(f"{entry!r} isn't an IP address or range")
+
+
+def _outbound_tags(config: dict) -> tuple[str, str]:
+    """(allow tag, block tag): the default outbound and a blackhole, tagging or
+    adding them as needed (on this copy of the config only)."""
+    outbounds = config.setdefault("outbounds", [])
+    if not outbounds:
+        outbounds.append({"protocol": "freedom", "tag": "direct"})
+    first = outbounds[0]
+    if not first.get("tag"):
+        first["tag"] = "direct"
+    block = next((o for o in outbounds if o.get("protocol") == "blackhole" and o.get("tag")), None)
+    if not block:
+        block = {"protocol": "blackhole", "tag": BLOCK_TAG}
+        outbounds.append(block)
+    return first["tag"], block["tag"]
+
+
+def build_rules(users: List[tuple], lists: Dict[int, dict], policy: str, allow: str, block: str) -> List[dict]:
+    """users: (email, access_list_id, unrestricted); lists: id -> {domains, ips}."""
+    unrestricted = [email for email, _, free in users if free]
+    by_list: Dict[int, List[str]] = defaultdict(list)
+    for email, list_id, free in users:
+        if not free and list_id in lists:
+            by_list[list_id].append(email)
+
+    rules: List[dict] = []
+    if policy != "all" and unrestricted:
+        rules.append({"type": "field", "user": unrestricted, "outboundTag": allow})
+    for list_id, emails in by_list.items():
+        lst = lists[list_id]
+        if lst["domains"]:
+            rules.append({"type": "field", "user": emails, "domain": lst["domains"], "outboundTag": allow})
+        if lst["ips"]:
+            rules.append({"type": "field", "user": emails, "ip": lst["ips"], "outboundTag": allow})
+        rules.append({"type": "field", "user": emails, **CATCH_ALL, "outboundTag": block})
+    if policy == "except_listed":
+        domains = sorted({d for lst in lists.values() for d in lst["domains"]})
+        ips = sorted({i for lst in lists.values() for i in lst["ips"]})
+        if domains:
+            rules.append({"type": "field", "domain": domains, "outboundTag": block})
+        if ips:
+            rules.append({"type": "field", "ip": ips, "outboundTag": block})
+    elif policy == "none":
+        rules.append({"type": "field", **CATCH_ALL, "outboundTag": block})
+    return rules
+
+
+def apply(config: dict, db) -> None:
+    """Add the access rules for the users in `config` (called by include_db_users)."""
+    from app.db.models import AccessList, Admin, User
+    from app.settings import settings
+
+    policy = settings.ACCESS_DEFAULT_POLICY
+    lists = {row.id: {"domains": list(row.domains or []), "ips": list(row.ips or [])}
+             for row in db.query(AccessList).all()}
+    # every user with an access setting, whatever their status: a disabled user
+    # who is enabled again is added to Xray without a restart and must already
+    # be covered by the rules
+    # A user's own setting wins; otherwise their admin's list applies (so an
+    # admin can't get round a list by recreating users).
+    users = [
+        (f"{uid}.{username}", list_id or admin_list, bool(free))
+        for uid, username, list_id, free, admin_list in db.query(
+            User.id, User.username, User.access_list_id, User.access_unrestricted, Admin.access_list_id
+        ).outerjoin(Admin, User.admin_id == Admin.id).filter(
+            (User.access_list_id.isnot(None)) | (User.access_unrestricted.is_(True)) | (Admin.access_list_id.isnot(None))
+        ).all()
+    ]
+    if policy == "all" and not any(list_id in lists for _, list_id, free in users if not free):
+        return  # nothing to enforce
+    allow, block = _outbound_tags(config)
+    rules = build_rules(users, lists, policy, allow, block)
+    if rules:
+        config.setdefault("routing", {}).setdefault("rules", []).extend(rules)
+
+
+def warnings(config: dict) -> List[str]:
+    """Things in the core config that stop access rules from working."""
+    found = []
+    for inbound in config.get("inbounds", []):
+        if inbound.get("tag") == "API_INBOUND" or inbound.get("protocol") == "dokodemo-door":
+            continue
+        sniffing = inbound.get("sniffing") or {}
+        if not sniffing.get("enabled"):
+            found.append(f'Inbound "{inbound.get("tag")}" has sniffing off, so domain rules can\'t match its traffic.')
+        elif sniffing.get("routeOnly") is False and not sniffing.get("destOverride"):
+            found.append(f'Inbound "{inbound.get("tag")}" sniffs without destOverride; add "http", "tls", "quic".')
+    for index, rule in enumerate((config.get("routing") or {}).get("rules", [])):
+        if rule.get("outboundTag") == "API" or rule.get("inboundTag") == ["API_INBOUND"]:
+            continue
+        if not any(rule.get(key) for key in _CONDITIONS) and rule.get("network") in (None, "tcp,udp", "udp,tcp"):
+            found.append(f"Routing rule {index + 1} matches all traffic, so access rules after it never apply.")
+            break
+    return found
+
+
+# --- keeping users out of Xray until their rules are live ------------------------------
+
+_covered_cache: Dict[int, tuple] = {}
+
+
+def covers(config, email: str) -> bool:
+    """Whether a running config's access rules name this user."""
+    if not config:
+        return False
+    cached = _covered_cache.get(id(config))
+    if not cached or cached[0] is not config:
+        rules = (config.get("routing") or {}).get("rules", [])
+        cached = (config, frozenset(u for rule in rules for u in rule.get("user") or []))
+        if len(_covered_cache) > 32:
+            _covered_cache.clear()
+        _covered_cache[id(config)] = cached
+    return email in cached[1]
+
+
+def needs_rules(dbuser) -> bool:
+    """True for a user who must be held to an access list (their own or their
+    admin's): adding them to a core whose config doesn't name them would give
+    them the default access."""
+    from sqlalchemy.orm import object_session
+
+    from app.db.models import AccessList
+
+    if dbuser.access_unrestricted:
+        return False  # at worst the default policy applies until the restart
+    list_id = dbuser.access_list_id or (dbuser.admin.access_list_id if dbuser.admin else None)
+    if not list_id:
+        return False
+    session = object_session(dbuser)
+    return session is None or session.get(AccessList, list_id) is not None  # dangling id: nothing to enforce
+
+
+def held_back(dbuser, config) -> bool:
+    """Gate for one core (the panel's or a node's): True if the user must stay
+    out of it for now; schedules a restart that brings them in with rules.
+    Every path that adds or updates a user in Xray asks this per core
+    (app/xray/operations.py)."""
+    if not needs_rules(dbuser) or covers(config, f"{dbuser.id}.{dbuser.username}"):
+        return False
+    if not status["pending"]:
+        schedule_restart()
+    return True
+
+
+def allowed_in_core(dbuser) -> bool:
+    """The panel's own core (kept for callers that only care about it)."""
+    from app import xray
+
+    return not held_back(dbuser, xray.core.running_config)
+
+
+# --- applying changes -------------------------------------------------------------
+
+_timer: Optional[threading.Timer] = None
+_timer_lock = threading.Lock()
+# what the Access lists page shows: a change waiting to be applied, or the last failure
+status = {"pending": False, "error": None}
+RETRY_DELAYS = (5, 15, 60)
+
+
+def apply_now() -> None:
+    """Restart the core and nodes with the current rules. Raises on failure."""
+    from app import logger, xray
+
+    config = xray.config.include_db_users()
+    xray.core.restart(config)
+    if not xray.core.started:
+        raise RuntimeError("Xray didn't start with the new rules; check the core logs")
+    for node_id, node in list(xray.nodes.items()):
+        if node.connected:
+            xray.operations.restart_node(node_id, config)
+    status.update(pending=False, error=None)
+    logger.info("Xray restarted to apply access list changes")
+
+
+def _run(attempt: int = 0) -> None:
+    from app import logger
+
+    try:
+        apply_now()
+    except Exception as exc:
+        status["error"] = str(exc)
+        if attempt < len(RETRY_DELAYS):
+            logger.error(f"Applying access list changes failed, retrying in {RETRY_DELAYS[attempt]}s: {exc}")
+            _start(RETRY_DELAYS[attempt], attempt + 1)
+        else:
+            status["pending"] = False
+            logger.error(f"Applying access list changes failed: {exc}")
+
+
+def _start(delay: float, attempt: int = 0) -> None:
+    global _timer
+    with _timer_lock:
+        if _timer:
+            _timer.cancel()
+        _timer = threading.Timer(delay, _run, args=(attempt,))
+        _timer.daemon = True
+        _timer.start()
+
+
+def schedule_restart(delay: float = 2.0) -> None:
+    """Restart the core (and nodes) shortly, once for a burst of changes, with
+    retries. Users whose own access changed are kept out of Xray until then
+    (see the user routes), so nobody runs with wider access than intended."""
+    status["pending"] = True
+    _start(delay)

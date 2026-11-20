@@ -103,6 +103,9 @@ def update_settings(
             db.add(Setting(key=key, value=value, updated_by=admin.username))
     db.commit()
     settings.reload()
+    if "ACCESS_DEFAULT_POLICY" in coerced:
+        from app.routers.access_list import _apply
+        _apply()  # the policy lives in the server's routing rules
 
     for key, value in coerced.items():
         shown = "<secret>" if BY_KEY[key].secret else value

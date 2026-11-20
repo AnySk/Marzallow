@@ -4,6 +4,7 @@ import {
   Button,
   chakra,
   CircularProgress,
+  Flex,
   FormControl,
   FormLabel,
   HStack,
@@ -32,14 +33,16 @@ import classNames from "classnames";
 import { useCoreSettings } from "contexts/CoreSettingsContext";
 import { useDashboard } from "contexts/DashboardContext";
 import debounce from "lodash.debounce";
-import { FC, useCallback, useEffect, useRef, useState } from "react";
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { ReadyState } from "react-use-websocket";
 import { useWebSocket } from "react-use-websocket/dist/lib/use-websocket";
 import { getAuthToken } from "utils/authStorage";
 import { Icon } from "./Icon";
+import { Help, PageHeader, Panel, Pill } from "./ui";
 import { CoreConfigEditor } from "./CoreConfigEditor";
 import { useNodesQuery } from "contexts/NodesContext";
 
@@ -112,7 +115,8 @@ const CoreSettingModalContent: FC = () => {
 
   const { data: nodes } = useNodesQuery();
   const disabled = false;
-  const [selectedNode, setNode] = useState<string>("");
+  const [searchParams] = useSearchParams();
+  const [selectedNode, setNode] = useState<string>(searchParams.get("node") || "");
 
   const handleLog = (id: string, title: string) => {
     if (id === selectedNode) return;
@@ -150,8 +154,9 @@ const CoreSettingModalContent: FC = () => {
   }, [config]);
 
   useEffect(() => {
-    if (isEditingCore) fetchCoreSettings();
-  }, [isEditingCore]);
+    fetchCoreSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   "".startsWith;
   const scrollShouldStayOnEnd = useRef(true);
   const updateLogs = useCallback(
@@ -251,166 +256,189 @@ const CoreSettingModalContent: FC = () => {
       setFullScreen(true);
     }
   };
-  return (
-    <form onSubmit={form.handleSubmit(handleOnSave)}>
-      <ModalBody>
-        <FormControl>
-          <HStack justifyContent="space-between" alignItems="flex-start">
-            <FormLabel>
-              {t("core.configuration")}{" "}
-              {isLoading && <CircularProgress isIndeterminate size="15px" />}
-            </FormLabel>
-            <HStack gap={1}>
-              <Tooltip label="Xray Version" placement="top">
-                <Badge height="100%" textTransform="lowercase">
-                  {version && `v${version}`}
-                </Badge>
-              </Tooltip>
-              <IconButton
-                size="xs"
-                aria-label="full screen"
-                variant="ghost"
-                onClick={handleFullScreen}
-              >
-                {!isFullScreen ? <FullScreenIcon /> : <ExitFullScreenIcon />}
-              </IconButton>
-            </HStack>
-          </HStack>
-          <Box
-            position="relative"
-            ref={editorRef}
-            minHeight="300px"
-            bg="var(--chakra-colors-chakra-body-bg)"
-            p={isFullScreen ? 4 : 0}
-          >
-            <Controller
-              control={form.control}
-              name="config"
-              render={({ field }) => (
-                <CoreConfigEditor
-                  value={configText}
-                  onChange={field.onChange}
-                  height={isFullScreen ? "calc(100vh - 2rem)" : undefined}
-                />
-              )}
-            />
-          </Box>
-        </FormControl>
-        <FormControl mt="4">
-          <HStack
-            justifyContent="space-between"
-            style={{ paddingBottom: "1rem" }}
-          >
-            <HStack>
-              {nodes?.[0] && (
-                <Select
-                  size="sm"
-                  style={{ width: "auto" }}
-                  disabled={disabled}
-                  onChange={(v) =>
-                    handleLog(
-                      v.currentTarget.value,
-                      v.currentTarget.selectedOptions[0].text
-                    )
-                  }
-                >
-                  <option key={"host"} value={"host"} defaultChecked>
-                    Master
-                  </option>
-                  {nodes &&
-                    nodes.map((s) => {
-                      return (
-                        <option key={s.address} value={String(s.id)}>
-                          {t(s.name)}
-                        </option>
-                      );
-                    })}
-                </Select>
-              )}
-              <FormLabel className="w-au">{t("core.logs")}</FormLabel>
-            </HStack>
-            <Text as={FormLabel}>{t(`core.socket.${status}`)}</Text>
-          </HStack>
-          <Box
-            border="1px solid"
-            borderColor="border"
-            bg="surface-subtle"
-            fontFamily="mono"
-            borderRadius="md"
-            minHeight="200px"
-            maxHeight={"250px"}
-            p={2}
-            overflowY="auto"
-            ref={logsDiv}
-          >
-            {logs.map((message, i) => (
-              <Text fontSize="12px" fontFamily="mono" color="text-2" key={i} whiteSpace="pre-line">
-                {message}
-              </Text>
-            ))}
-          </Box>
-        </FormControl>
-      </ModalBody>
-      <ModalFooter>
-        <HStack w="full" justifyContent="space-between">
-          <HStack>
-            <Box>
-              <Button
-                size="sm"
-                leftIcon={
-                  <ReloadIcon
-                    className={classNames({
-                      "animate-spin": isRestarting,
-                    })}
-                  />
-                }
-                onClick={() => handleRestartCore()}
-              >
-                {t(isRestarting ? "core.restarting" : "core.restartCore")}
-              </Button>
-            </Box>
-          </HStack>
+  const text = form.watch("config");
+  const changes = useMemo(() => (configText && text ? lineDiff(configText, text) : []), [configText, text]);
+  const changed = changes.filter((c) => c.type !== "same").length;
+  const [reviewing, setReviewing] = useState(false);
+  const format = () => {
+    try {
+      form.setValue("config", JSON.stringify(JSON.parse(text), null, 2));
+      setFormatted((n) => n + 1);
+    } catch (e) {
+      toast({ title: t("core.invalidJson", { error: (e as Error).message }), status: "error", position: "top", duration: 4000 });
+    }
+  };
+  const [formatted, setFormatted] = useState(0);
 
-          <HStack>
-            <Button
-              size="sm"
-              variant="solid"
-              colorScheme="primary"
-              px="5"
-              type="submit"
-              isDisabled={isLoading || isPostLoading}
-              isLoading={isPostLoading}
-            >
-              {t("core.save")}
+  return (
+    <form onSubmit={form.handleSubmit(handleOnSave)} style={{ display: "contents" }}>
+      <PageHeader
+        title={t("nav.core")}
+        meta={
+          version && (
+            <Pill tone={isLoading ? "neutral" : "success"}>
+              Xray {version} {t("core.running")}
+            </Pill>
+          )
+        }
+        subtitle={t("core.subtitle")}
+        actions={
+          <>
+            <Button variant="outline" onClick={format} isDisabled={!text}>
+              {t("core.format")}
+            </Button>
+            <Button variant="outline" onClick={() => setReviewing(true)} isDisabled={!changed}>
+              {t("core.review")}
+              {changed > 0 && (
+                <Text as="span" ml={2} px="6px" borderRadius="full" bg="accent-soft" color="accent-text" fontSize="12px">
+                  {changed}
+                </Text>
+              )}
+            </Button>
+            <Button colorScheme="primary" type="submit" isDisabled={isLoading || isPostLoading || !changed} isLoading={isPostLoading}>
+              {t("core.saveRestart")}
+            </Button>
+          </>
+        }
+      />
+      <Box position="relative" ref={editorRef} bg="canvas" p={isFullScreen ? 4 : 0}>
+        <HStack justify="space-between" mb={2}>
+          <Text fontSize="12px" color="text-muted" fontFamily="mono">
+            {changed ? t("core.edited") : "xray_config.json"}
+            {isLoading && " · …"}
+          </Text>
+          <HStack spacing={2}>
+            <Help display={{ base: "none", md: "block" }}>{t("core.editorHint")}</Help>
+            <IconButton size="xs" aria-label={t("core.fullScreen")} variant="ghost" onClick={handleFullScreen}>
+              {!isFullScreen ? <FullScreenIcon /> : <ExitFullScreenIcon />}
+            </IconButton>
+          </HStack>
+        </HStack>
+        <Controller
+          control={form.control}
+          name="config"
+          render={({ field }) => (
+            <CoreConfigEditor
+              key={formatted}
+              value={formatted ? field.value : configText}
+              onChange={field.onChange}
+              height={isFullScreen ? "calc(100vh - 4rem)" : "max(360px, calc(100vh - 470px))"}
+            />
+          )}
+        />
+      </Box>
+
+      <Panel p={4}>
+        <HStack justify="space-between" mb={3} flexWrap="wrap" gap={2}>
+          <HStack spacing={3}>
+            <Text fontWeight={650}>{t("core.logs")}</Text>
+            {nodes?.[0] && (
+              <Select size="sm" w="auto" value={selectedNode || "host"} onChange={(v) => handleLog(v.currentTarget.value, v.currentTarget.selectedOptions[0].text)}>
+                <option value="host">{t("core.panelServer")}</option>
+                {nodes.map((n) => (
+                  <option key={n.address} value={String(n.id)}>
+                    {n.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </HStack>
+          <HStack spacing={3}>
+            <Text fontSize="13px" color="text-muted">
+              {t(`core.socket.${status}`)}
+            </Text>
+            <Button size="sm" variant="outline" leftIcon={<ReloadIcon className={classNames({ "animate-spin": isRestarting })} />}
+              onClick={() => handleRestartCore()}>
+              {t(isRestarting ? "core.restarting" : "core.restartCore")}
             </Button>
           </HStack>
         </HStack>
-      </ModalFooter>
+        <Box borderWidth="1px" borderColor="border" bg="surface-subtle" borderRadius="md" minH="160px" maxH="240px" p={2} overflowY="auto" ref={logsDiv}>
+          {logs.map((message, i) => (
+            <Text fontSize="12px" fontFamily="mono" color="text-2" key={i} whiteSpace="pre-wrap">
+              {message}
+            </Text>
+          ))}
+        </Box>
+      </Panel>
+
+      <Modal isOpen={reviewing} onClose={() => setReviewing(false)} size="4xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent mx={3}>
+          <ModalHeader>
+            <Text fontSize="17px" fontWeight={700}>{t("core.reviewTitle", { count: changed })}</Text>
+            <Text fontSize="13px" fontWeight={400} color="text-muted">{t("core.reviewHelp")}</Text>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Box fontFamily="mono" fontSize="12px" borderWidth="1px" borderColor="border" borderRadius="md" overflow="hidden">
+              {collapse(changes).map((c, i) =>
+                c.type === "gap" ? (
+                  <Text key={i} px={3} py={1} bg="surface-subtle" color="text-muted">⋯ {t("core.unchangedLines", { count: c.count })}</Text>
+                ) : (
+                  <Flex key={i} bg={c.type === "add" ? "success-bg" : c.type === "del" ? "danger-bg" : "transparent"}
+                    color={c.type === "add" ? "success-fg" : c.type === "del" ? "danger-fg" : "text-2"}>
+                    <Text w="44px" flex="none" textAlign="right" pr={2} color="text-muted" userSelect="none">{c.line ?? ""}</Text>
+                    <Text w="16px" flex="none" userSelect="none">{c.type === "add" ? "+" : c.type === "del" ? "−" : " "}</Text>
+                    <Text whiteSpace="pre-wrap" wordBreak="break-all">{c.text}</Text>
+                  </Flex>
+                )
+              )}
+            </Box>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="outline" onClick={() => setReviewing(false)}>{t("core.keepEditing")}</Button>
+            <Button colorScheme="primary" onClick={() => { setReviewing(false); form.handleSubmit(handleOnSave)(); }} isLoading={isPostLoading}>
+              {t("core.saveRestart")}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </form>
   );
 };
-export const CoreSettingsModal: FC = () => {
-  const { isEditingCore } = useDashboard();
-  const onClose = useDashboard.setState.bind(null, { isEditingCore: false });
-  const { t } = useTranslation();
 
-  return (
-    <Modal isOpen={isEditingCore} onClose={onClose} size="6xl">
-      <ModalOverlay />
-      <ModalContent mx="3" w="full">
-        <ModalHeader pt={6}>
-          <HStack gap={2}>
-            <Icon color="primary">
-              <UsageIcon />
-            </Icon>
-            <Text fontWeight="semibold" fontSize="lg">
-              {t("core.title")}
-            </Text>
-          </HStack>
-        </ModalHeader>
-        <ModalCloseButton mt={3} />
-        <CoreSettingModalContent />
-      </ModalContent>
-    </Modal>
-  );
+type DiffLine = { type: "same" | "add" | "del"; text: string; line?: number };
+
+/** Line diff (longest common subsequence); fine for config-sized files. */
+export const lineDiff = (before: string, after: string): DiffLine[] => {
+  const a = before.split("\n");
+  const b = after.split("\n");
+  if (a.length * b.length > 4_000_000) {
+    return [...a.map((text) => ({ type: "del" as const, text })), ...b.map((text, i) => ({ type: "add" as const, text, line: i + 1 }))];
+  }
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--) dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const out: DiffLine[] = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push({ type: "same", text: a[i], line: j + 1 }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) out.push({ type: "del", text: a[i++] });
+    else { out.push({ type: "add", text: b[j], line: j + 1 }); j++; }
+  }
+  while (i < n) out.push({ type: "del", text: a[i++] });
+  while (j < m) { out.push({ type: "add", text: b[j], line: j + 1 }); j++; }
+  return out;
 };
+
+/** Keep 2 lines of context around changes. */
+const collapse = (lines: DiffLine[]) => {
+  const keep = lines.map((l, i) => l.type !== "same" || lines.slice(Math.max(0, i - 2), i + 3).some((x) => x.type !== "same"));
+  const out: (DiffLine | { type: "gap"; count: number })[] = [];
+  let gap = 0;
+  lines.forEach((l, i) => {
+    if (keep[i]) {
+      if (gap) out.push({ type: "gap", count: gap });
+      gap = 0;
+      out.push(l);
+    } else gap++;
+  });
+  if (gap) out.push({ type: "gap", count: gap });
+  return out;
+};
+
+export const CoreSettingsModal: FC = () => <CoreSettingModalContent />;
+
+export default CoreSettingsModal;

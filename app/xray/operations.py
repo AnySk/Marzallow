@@ -10,6 +10,7 @@ from app.db import GetDB, crud
 from app.models.node import NodeStatus
 from app.models.user import UserResponse
 from app.utils.concurrency import threaded_function
+from app.xray import access
 from app.xray.node import XRayNode
 from xray_api import XRay as XRayAPI
 from xray_api.types.account import Account, XTLSFlows
@@ -71,14 +72,19 @@ def _strip_unsupported_flow(account: Account, inbound: dict) -> None:
         account.flow = XTLSFlows.NONE
 
 
-def _ready_node_apis() -> list:
+def _ready_node_apis(dbuser: "DBUser" = None) -> list:
     """APIs of connected, started nodes. An unreachable node is skipped (and
     logged) instead of raising, which used to abort the whole operation - and
-    in the review job, leave expired/limited users active."""
+    in the review job, leave expired/limited users active.
+
+    With `dbuser`, nodes whose running config lacks that user's access rules
+    are left out (see access.held_back)."""
     apis = []
     for node_id, node in list(xray.nodes.items()):
         try:
             if node.connected and node.started:
+                if dbuser is not None and access.held_back(dbuser, getattr(node, "running_config", None)):
+                    continue
                 apis.append(node.api)
         except Exception as err:
             logger.warning(f"Skipping unreachable node {node_id}: {err}")
@@ -86,9 +92,12 @@ def _ready_node_apis() -> list:
 
 
 def add_user(dbuser: "DBUser"):
+    # each core (panel, nodes) only gets a user held to an access list once its
+    # running config has the rules naming them; the others get them on restart
+    main_ok = not access.held_back(dbuser, xray.core.running_config)
     user = UserResponse.model_validate(dbuser)
     email = f"{dbuser.id}.{dbuser.username}"
-    node_apis = _ready_node_apis()
+    node_apis = _ready_node_apis(dbuser)
 
     for proxy_type, inbound_tags in user.inbounds.items():
         for inbound_tag in inbound_tags:
@@ -102,7 +111,8 @@ def add_user(dbuser: "DBUser"):
 
             _strip_unsupported_flow(account, inbound)
 
-            _add_user_to_inbound(xray.api, inbound_tag, account)  # main core
+            if main_ok:
+                _add_user_to_inbound(xray.api, inbound_tag, account)  # main core
             for api in node_apis:
                 _add_user_to_inbound(api, inbound_tag, account)
 
@@ -118,9 +128,25 @@ def remove_user(dbuser: "DBUser"):
 
 
 def update_user(dbuser: "DBUser"):
+    # a core without this user's access rules loses them until its restart
+    if access.needs_rules(dbuser):
+        email = f"{dbuser.id}.{dbuser.username}"
+        if access.held_back(dbuser, xray.core.running_config):
+            for inbound_tag in xray.config.inbounds_by_tag:
+                _remove_user_from_inbound(xray.api, inbound_tag, email)
+            main_ok = False
+        else:
+            main_ok = True
+        allowed = set(map(id, _ready_node_apis(dbuser)))
+        for api in _ready_node_apis():
+            if id(api) not in allowed:
+                for inbound_tag in xray.config.inbounds_by_tag:
+                    _remove_user_from_inbound(api, inbound_tag, email)
+    else:
+        main_ok = True
     user = UserResponse.model_validate(dbuser)
     email = f"{dbuser.id}.{dbuser.username}"
-    node_apis = _ready_node_apis()
+    node_apis = _ready_node_apis(dbuser)
 
     active_inbounds = []
     for proxy_type, inbound_tags in user.inbounds.items():
@@ -136,7 +162,8 @@ def update_user(dbuser: "DBUser"):
 
             _strip_unsupported_flow(account, inbound)
 
-            _alter_inbound_user(xray.api, inbound_tag, account)  # main core
+            if main_ok:
+                _alter_inbound_user(xray.api, inbound_tag, account)  # main core
             for api in node_apis:
                 _alter_inbound_user(api, inbound_tag, account)
 

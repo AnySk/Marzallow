@@ -24,6 +24,10 @@ class UserTemplate(BaseModel):
     v2ray_json_template_id: Optional[int] = Field(None, nullable=True, ge=0)
     singbox_template_id: Optional[int] = Field(None, nullable=True, ge=0)
     clash_template_id: Optional[int] = Field(None, nullable=True, ge=0)
+    # server-side access (app/xray/access.py); on modify null = unchanged,
+    # access_list_id 0 = back to the default policy. Sudo admins only.
+    access_list_id: Optional[int] = Field(None, nullable=True, ge=0)
+    access_unrestricted: Optional[bool] = Field(None, nullable=True)
 
 
 class UserTemplateCreate(UserTemplate):

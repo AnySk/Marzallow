@@ -17,6 +17,8 @@ export type UserTemplate = {
   username_prefix: string | null;
   username_suffix: string | null;
   inbounds: UserInbounds;
+  access_list_id?: number | null;
+  access_unrestricted?: boolean;
 } & UserTemplateRefs;
 
 export type BulkAction =
@@ -26,6 +28,7 @@ export type BulkAction =
   | "reset_usage"
   | "revoke_sub"
   | "extend"
+  | "set_expire"
   | "add_data";
 
 export type BulkResult = { done: string[]; skipped: Record<string, string> };

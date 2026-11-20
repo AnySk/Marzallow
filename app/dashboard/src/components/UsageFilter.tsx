@@ -348,31 +348,23 @@ export function createUsageConfig(
       },
       dataLabels: {
         formatter: (val, { seriesIndex, w }) => {
-          return formatBytes(w.config.series[seriesIndex], 1);
+          return formatBytes(Number(w?.config?.series?.[seriesIndex]) || 0, 1);
         },
       },
       tooltip: {
-        custom: ({ series, seriesIndex, dataPointIndex, w }) => {
-          const readable = formatBytes(series[seriesIndex], 1);
-          const total = Math.max(
-            (series as [number]).reduce((t, c) => (t += c)),
-            1
-          );
-          const percent =
-            Math.round((series[seriesIndex] / total) * 1000) / 10 + "%";
-          return `
-            <div style="
-                    background-color: ${w.globals.colors[seriesIndex]};
-                    padding-left:12px;
-                    padding-right:12px;
-                    padding-top:6px;
-                    padding-bottom:6px;
-                    font-size:0.725rem;
-                  "
-            >
-              ${w.config.labels[seriesIndex]}: <b>${percent}, ${readable}</b>
-            </div>
-          `;
+        // read from the chart's own state: the props can be mid-update when the
+        // period changes, which made the label/value come out as "undefined"
+        custom: ({ series: values, seriesIndex, w }) => {
+          const list: number[] = (w?.globals?.series || values || []).map((v: unknown) => Number(v) || 0);
+          const value = list[seriesIndex] ?? 0;
+          const name = w?.globals?.labels?.[seriesIndex] ?? w?.config?.labels?.[seriesIndex] ?? labels[seriesIndex] ?? "—";
+          const sum = Math.max(list.reduce((t, c) => t + c, 0), 1);
+          const percent = Math.round((value / sum) * 1000) / 10 + "%";
+          const color = w?.globals?.colors?.[seriesIndex] || "#2454D3";
+          return `<div style="padding:6px 10px;font-size:12px;display:flex;align-items:center;gap:8px">
+              <span style="width:8px;height:8px;border-radius:50%;background:${color}"></span>
+              <span>${String(name).replace(/[<>&]/g, "")}: <b>${percent} · ${formatBytes(value, 1)}</b></span>
+            </div>`;
         },
       },
       colors: generateDistinctColors(series.length),

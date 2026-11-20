@@ -30,7 +30,8 @@ import {
 } from "@chakra-ui/react";
 import { useQuery } from "@tanstack/react-query";
 import { StatisticsQueryKey } from "components/Statistics";
-import { AlertsQueryKey, useFeatures } from "contexts/FeaturesContext";
+import { AlertsQueryKey } from "contexts/FeaturesContext";
+import { Chip, PageHeader, Panel } from "./ui";
 import { FC, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
@@ -59,8 +60,7 @@ const toText = (setting: SettingInfo, value: any) =>
 
 /** Panel settings stored in the database, overriding .env (sudo only). */
 export const SettingsModal: FC = () => {
-  const { openModal, setModal } = useFeatures();
-  const isOpen = openModal === "settings";
+  const isOpen = true;
   const { t } = useTranslation();
   const toast = useToast();
   const [draft, setDraft] = useState<Record<string, any>>({}); // key -> edited value or RESET
@@ -112,57 +112,63 @@ export const SettingsModal: FC = () => {
     const isReset = pending === RESET;
     const current = pending === undefined || isReset ? (isReset ? setting.default : setting.value) : pending;
     const overridden = isReset ? false : pending !== undefined || setting.overridden;
-    const label = (
-      <HStack spacing={2} align="baseline" flexWrap="wrap">
-        <Text>{setting.description}</Text>
-        {overridden ? (
-          <Badge colorScheme="purple" fontSize="0.6rem">{t("settings.changed")}</Badge>
-        ) : (
-          <Badge fontSize="0.6rem">{t("settings.fromEnv")}</Badge>
-        )}
+    const source = (
+      <HStack spacing={2} flex="none">
+        <Chip fontFamily="body" bg={overridden ? "accent-soft" : "surface-subtle"} color={overridden ? "accent-text" : "text-2"}>
+          {overridden ? t("settings.changed") : t("settings.fromEnv")}
+        </Chip>
         {overridden && (
-          <Link fontSize="xs" color="primary.500" onClick={() => reset(setting)}>
+          <Button size="xs" variant="ghost" onClick={() => reset(setting)}>
             {t("settings.resetToEnv")}
-          </Link>
+          </Button>
         )}
       </HStack>
     );
-    const help = <FormHelperText fontSize="xs" fontFamily="mono">{setting.key}</FormHelperText>;
-
-    if (setting.type === "bool")
-      return (
-        <FormControl key={setting.key} display="flex" alignItems="flex-start" gap={3} isInvalid={!!errors[setting.key]}>
-          <Switch id={setting.key} mt={1} isChecked={!!current}
-            onChange={(e) => edit(setting.key, e.target.checked)} />
-          <VStack align="start" spacing={0}>
-            <FormLabel htmlFor={setting.key} m={0} fontWeight="normal">{label}</FormLabel>
-            {help}
-            <FormErrorMessage>{errors[setting.key]}</FormErrorMessage>
-          </VStack>
-        </FormControl>
+    const control =
+      setting.type === "bool" ? (
+        <Switch id={setting.key} colorScheme="primary" isChecked={!!current} onChange={(e) => edit(setting.key, e.target.checked)} />
+      ) : setting.type === "int" ? (
+        <NumberInput size="sm" w="160px" value={current ?? ""} onChange={(_, n) => edit(setting.key, Number.isNaN(n) ? current : n)}>
+          <NumberInputField name={setting.key} id={setting.key} />
+        </NumberInput>
+      ) : setting.secret ? (
+        <Input size="sm" w={{ base: "full", md: "320px" }} type="password" id={setting.key} name={setting.key} autoComplete="new-password"
+          placeholder={setting.has_value ? t("settings.secretSet") : t("settings.secretNotSet")}
+          value={typeof pending === "string" ? pending : ""}
+          onChange={(e) => edit(setting.key, e.target.value)} />
+      ) : (
+        <Input size="sm" w={{ base: "full", md: "320px" }} id={setting.key} name={setting.key}
+          value={typeof pending === "string" ? pending : toText(setting, current)}
+          placeholder={setting.type.endsWith("_list") ? t("settings.commaSeparated") : ""}
+          onChange={(e) => edit(setting.key, e.target.value)} />
       );
-
     return (
-      <FormControl key={setting.key} isInvalid={!!errors[setting.key]}>
-        <FormLabel fontWeight="normal">{label}</FormLabel>
-        {setting.type === "int" ? (
-          <NumberInput size="sm" maxW="200px" value={current ?? ""}
-            onChange={(_, n) => edit(setting.key, Number.isNaN(n) ? current : n)}>
-            <NumberInputField name={setting.key} />
-          </NumberInput>
-        ) : setting.secret ? (
-          <Input size="sm" type="password" name={setting.key} autoComplete="new-password"
-            placeholder={setting.has_value ? t("settings.secretSet") : t("settings.secretNotSet")}
-            value={typeof pending === "string" ? pending : ""}
-            onChange={(e) => edit(setting.key, e.target.value)} />
-        ) : (
-          <Input size="sm" name={setting.key}
-            value={typeof pending === "string" ? pending : toText(setting, current)}
-            placeholder={setting.type.endsWith("_list") ? t("settings.commaSeparated") : ""}
-            onChange={(e) => edit(setting.key, e.target.value)} />
-        )}
-        {help}
-        <FormErrorMessage>{errors[setting.key]}</FormErrorMessage>
+      <FormControl
+        key={setting.key}
+        isInvalid={!!errors[setting.key]}
+        display="flex"
+        flexDirection={{ base: "column", md: "row" }}
+        alignItems={{ base: "stretch", md: "center" }}
+        gap={3}
+        px={4}
+        py={3}
+        borderBottomWidth="1px"
+        borderColor="border-subtle"
+        _last={{ borderBottomWidth: 0 }}
+      >
+        <VStack align="flex-start" spacing="2px" flex={1} minW={0}>
+          <FormLabel htmlFor={setting.key} m={0} fontWeight={500} fontSize="14px">
+            {setting.description}
+          </FormLabel>
+          <Text fontSize="12px" fontFamily="mono" color="text-muted">
+            {setting.key}
+          </Text>
+          <FormErrorMessage mt={1}>{errors[setting.key]}</FormErrorMessage>
+        </VStack>
+        <HStack spacing={3} justify={{ base: "space-between", md: "flex-end" }}>
+          {control}
+          {source}
+        </HStack>
       </FormControl>
     );
   };
@@ -170,54 +176,48 @@ export const SettingsModal: FC = () => {
   const errorGroups = new Set((items || []).filter((s) => errors[s.key]).map((s) => s.group));
 
   return (
-    <Modal isOpen={isOpen} onClose={() => setModal(null)} size="2xl" scrollBehavior="inside">
-      <ModalOverlay />
-      <ModalContent mx="3">
-        <ModalHeader>
-          {t("settings.title")}
-          <Text fontSize="sm" fontWeight="normal" color="text-muted" mt={1}>
-            {t("settings.description")}
-          </Text>
-        </ModalHeader>
-        <ModalCloseButton />
-        <ModalBody>
-          {isLoading || !items ? (
-            <Spinner />
-          ) : (
-            <Tabs size="sm" variant="soft-rounded" colorScheme="primary" isLazy={false}>
-              <TabList flexWrap="wrap" gap={1}>
-                {GROUPS.map((group) => (
-                  <Tab key={group} color={errorGroups.has(group) ? "red.500" : undefined}>
-                    {t(`settings.group.${group}`)}
-                  </Tab>
-                ))}
-              </TabList>
-              <TabPanels>
-                {GROUPS.map((group) => (
-                  <TabPanel key={group} px={0}>
-                    <VStack align="stretch" spacing={4}>
-                      {items.filter((s) => s.group === group).map(field)}
-                    </VStack>
-                  </TabPanel>
-                ))}
-              </TabPanels>
-            </Tabs>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <HStack>
-            <Text fontSize="xs" color="text-muted">
-              {changed.length ? t("settings.unsaved", { count: changed.length }) : ""}
-            </Text>
-            <Button size="sm" variant="ghost" onClick={() => setModal(null)}>
-              {t("cancel")}
+    <>
+      <PageHeader
+        title={t("settings.title")}
+        subtitle={t("settings.description")}
+        actions={
+          <>
+            {changed.length > 0 && (
+              <Text fontSize="13px" color="warning-fg">
+                {t("settings.unsaved", { count: changed.length })}
+              </Text>
+            )}
+            <Button variant="outline" isDisabled={!changed.length} onClick={() => { setDraft({}); setErrors({}); }}>
+              {t("settings.discard")}
             </Button>
-            <Button size="sm" colorScheme="primary" isDisabled={!changed.length} isLoading={saving} onClick={save}>
+            <Button colorScheme="primary" isDisabled={!changed.length} isLoading={saving} onClick={save}>
               {t("settings.save")}
             </Button>
-          </HStack>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+          </>
+        }
+      />
+      {isLoading || !items ? (
+        <Spinner />
+      ) : (
+        <Tabs variant="line" isLazy={false}>
+          <TabList flexWrap="wrap" overflowX="auto">
+            {GROUPS.map((group) => (
+              <Tab key={group} color={errorGroups.has(group) ? "danger-fg" : undefined}>
+                {t(`settings.group.${group}`)}
+              </Tab>
+            ))}
+          </TabList>
+          <TabPanels>
+            {GROUPS.map((group) => (
+              <TabPanel key={group} px={0} pt={4}>
+                <Panel>{items.filter((s) => s.group === group).map(field)}</Panel>
+              </TabPanel>
+            ))}
+          </TabPanels>
+        </Tabs>
+      )}
+    </>
   );
 };
+
+export default SettingsModal;

@@ -5,6 +5,7 @@ import { useDashboard } from "contexts/DashboardContext";
 import { AlertsQueryKey } from "contexts/FeaturesContext";
 import { FC, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { fetch } from "service/http";
 import { SystemAlerts } from "types/Management";
 
@@ -31,7 +32,8 @@ type Item = { key: string; count: number; text: ReactNode; tone: "warning" | "da
 /** Things that need attention; each one filters the users table (or opens nodes). */
 export const AlertsBar: FC = () => {
   const { t } = useTranslation();
-  const { onFilterChange, onEditingNodes } = useDashboard();
+  const { onFilterChange } = useDashboard();
+  const navigate = useNavigate();
   const { data } = useAlerts();
   if (!data) return null;
 
@@ -81,7 +83,7 @@ export const AlertsBar: FC = () => {
       icon: <Icons.node />,
       text: t("alerts.nodesDown", { count: data.disconnected_nodes.length, names: data.disconnected_nodes.join(", ") }),
       action: t("alerts.open"),
-      onClick: () => onEditingNodes(true),
+      onClick: () => navigate("/nodes"),
     },
   ].filter((item) => item.count > 0) as Item[];
 

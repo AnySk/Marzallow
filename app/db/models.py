@@ -47,6 +47,9 @@ class Admin(Base):
     telegram_id = Column(BigInteger, nullable=True, default=None)
     discord_webhook = Column(String(1024), nullable=True, default=None)
     users_usage = Column(BigInteger, nullable=False, default=0)
+    last_login_at = Column(DateTime, nullable=True, default=None)
+    # every user this admin owns is held to this access list (app/xray/access.py)
+    access_list_id = Column(Integer, nullable=True, default=None)
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
 
 
@@ -98,6 +101,10 @@ class User(Base):
     v2ray_json_template_id = Column(Integer, nullable=True, default=None)
     singbox_template_id = Column(Integer, nullable=True, default=None)
     clash_template_id = Column(Integer, nullable=True, default=None)
+
+    # server-side access (app/xray/access.py): a domain allowlist, or exempt from the default policy
+    access_list_id = Column(Integer, nullable=True, default=None)
+    access_unrestricted = Column(Boolean, nullable=False, default=False, server_default="0")
 
     edit_at = Column(DateTime, nullable=True, default=None)
     last_status_change = Column(DateTime, default=datetime.utcnow, nullable=True)
@@ -192,6 +199,8 @@ class UserTemplate(Base):
     v2ray_json_template_id = Column(Integer, nullable=True, default=None)
     singbox_template_id = Column(Integer, nullable=True, default=None)
     clash_template_id = Column(Integer, nullable=True, default=None)
+    access_list_id = Column(Integer, nullable=True, default=None)
+    access_unrestricted = Column(Boolean, nullable=False, default=False, server_default="0")
 
     inbounds = relationship(
         "ProxyInbound", secondary=template_inbounds_association
@@ -396,3 +405,16 @@ class SubscriptionTemplate(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(String(34), nullable=True)
+
+
+class AccessList(Base):
+    """Domains (and IP ranges) a user may reach; enforced by the server's routing."""
+    __tablename__ = "access_lists"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(64), nullable=False, unique=True)
+    description = Column(String(256), nullable=True)
+    domains = Column(JSON, nullable=False, default=list)
+    ips = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -25,6 +25,8 @@ from app.models.user import (
 )
 from app.utils import report, responses
 from app.routers.subscription_template import check_refs as check_template_refs
+from app.routers.access_list import check_access_fields
+from app.xray import access
 
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
 
@@ -62,6 +64,10 @@ def add_user(
             )
 
     check_template_refs(db, new_user)
+    access_changed = check_access_fields(db, new_user, admin)
+    creator = crud.get_admin(db, admin.username)
+    if creator and creator.access_list_id:
+        access_changed = True  # held to their admin's list: rules must name the new user first
     try:
         dbuser = crud.create_user(
             db, new_user, admin=crud.get_admin(db, admin.username)
@@ -70,10 +76,14 @@ def add_user(
         db.rollback()
         raise HTTPException(status_code=409, detail="User already exists")
 
-    bg.add_task(xray.operations.add_user, dbuser=dbuser)
+    if not access_changed:
+        bg.add_task(xray.operations.add_user, dbuser=dbuser)
+    # else: added by the restart below, together with the rules that limit them
     user = UserResponse.model_validate(dbuser)
     report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
     logger.info(f'New user "{dbuser.username}" added')
+    if access_changed:
+        access.schedule_restart()  # the server rules name users on access lists
     return user
 
 
@@ -118,10 +128,16 @@ def modify_user(
 
     old_status = dbuser.status
     check_template_refs(db, modified_user)
+    access_changed = check_access_fields(db, modified_user, admin, before=dbuser)
     dbuser = crud.update_user(db, dbuser, modified_user)
+    if access_changed:
+        access.schedule_restart()
     user = UserResponse.model_validate(dbuser)
 
-    if user.status in [UserStatus.active, UserStatus.on_hold]:
+    if access_changed:
+        # out of Xray until the restart brings them back with their new rules
+        bg.add_task(xray.operations.remove_user, dbuser=dbuser)
+    elif user.status in [UserStatus.active, UserStatus.on_hold]:
         bg.add_task(xray.operations.update_user, dbuser=dbuser)
     else:
         bg.add_task(xray.operations.remove_user, dbuser=dbuser)
@@ -271,6 +287,8 @@ def bulk_users_action(
     """
     if body.action == UsersBulkActionType.extend and not body.days:
         raise HTTPException(status_code=400, detail="`days` is required for extend")
+    if body.action == UsersBulkActionType.set_expire and not body.expire:
+        raise HTTPException(status_code=400, detail="`expire` is required for set_expire")
     if body.action == UsersBulkActionType.add_data and not body.data_limit:
         raise HTTPException(status_code=400, detail="`data_limit` is required for add_data")
 
@@ -303,11 +321,17 @@ def bulk_users_action(
                     result.skipped[username] = "not disabled"
                     continue
                 modify_user(UserModify(status=UserStatus.active), bg, db, dbuser, admin)
-            elif action == UsersBulkActionType.extend:
-                if not dbuser.expire:
-                    result.skipped[username] = "no expiry date"
+            elif action in (UsersBulkActionType.extend, UsersBulkActionType.set_expire):
+                if dbuser.status == UserStatus.expired and not body.reactivate_expired:
+                    result.skipped[username] = "expired"
                     continue
-                new_expire = max(dbuser.expire, now) + body.days * 86400
+                if action == UsersBulkActionType.extend:
+                    if not dbuser.expire:
+                        result.skipped[username] = "no expiry date"
+                        continue
+                    new_expire = max(dbuser.expire, now) + body.days * 86400
+                else:
+                    new_expire = body.expire
                 modify_user(UserModify(expire=new_expire), bg, db, dbuser, admin)
             elif action == UsersBulkActionType.add_data:
                 if not dbuser.data_limit:
@@ -347,6 +371,19 @@ def get_daily_usage(
     return crud.get_daily_usage(db, start, end,
                                 admins=owner if admin.is_sudo else [admin.username],
                                 username=username)
+
+
+@router.get("/users/usage/summary")
+def get_usage_summary(
+    start: str = "",
+    end: str = "",
+    owner: Union[List[str], None] = Query(None, alias="admin"),
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(Admin.get_current),
+):
+    """Traffic figures for the analytics page (defaults to the last 30 days)."""
+    start, end = validate_dates(start, end)
+    return crud.get_usage_summary(db, start, end, admins=owner if admin.is_sudo else [admin.username])
 
 
 @router.post("/users/reset", responses={403: responses._403, 404: responses._404})
@@ -429,6 +466,7 @@ def get_users_usage(
 @router.put("/user/{username}/set-owner", response_model=UserResponse)
 def set_owner(
     admin_username: str,
+    bg: BackgroundTasks,
     dbuser: UserResponse = Depends(get_validated_user),
     db: Session = Depends(get_db),
     admin: Admin = Depends(Admin.check_sudo_admin),
@@ -438,7 +476,12 @@ def set_owner(
     if not new_admin:
         raise HTTPException(status_code=404, detail="Admin not found")
 
+    access_moved = (dbuser.admin.access_list_id if dbuser.admin else None) != new_admin.access_list_id
     dbuser = crud.set_owner(db, dbuser, new_admin)
+    if access_moved and not (dbuser.access_list_id or dbuser.access_unrestricted):
+        # the admin's list applies to this user: out of Xray until the rules follow
+        bg.add_task(xray.operations.remove_user, dbuser=dbuser)
+        access.schedule_restart()
     user = UserResponse.model_validate(dbuser)
 
     logger.info(f'{user.username}"owner successfully set to{admin.username}')

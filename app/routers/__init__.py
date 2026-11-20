@@ -10,6 +10,7 @@ from . import (
     home,
     settings,
     subscription_template,
+    access_list,
 )
 
 api_router = APIRouter()
@@ -20,6 +21,7 @@ routers = [
     node.router,
     settings.router,
     subscription_template.router,
+    access_list.router,
     subscription.router,
     system.router,
     user_template.router,

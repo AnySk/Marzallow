@@ -27,6 +27,7 @@ class XRayCore:
 
         self.version = self.get_version()
         self.process = None
+        self.running_config = None  # the config the current process was started with
         self._restart_lock = threading.Lock()
 
         self._logs_buffer = deque(maxlen=100)
@@ -85,6 +86,7 @@ class XRayCore:
         """Start xray with `config` (a dict with a `to_json()` method, like XRayConfig)."""
         if self.started is True:
             raise RuntimeError("Xray is started already")
+        self.running_config = config
 
         # the log capture (used by the dashboard's logs view) needs warnings
         log = config.get('log', {})

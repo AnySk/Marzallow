@@ -14,6 +14,13 @@ import {
   chakra,
   Checkbox,
   Collapse,
+  Drawer,
+  DrawerBody,
+  DrawerCloseButton,
+  DrawerContent,
+  DrawerHeader,
+  DrawerOverlay,
+  Flex,
   FormControl,
   FormLabel,
   HStack,
@@ -24,6 +31,7 @@ import {
   ModalContent,
   ModalHeader,
   ModalOverlay,
+  SimpleGrid,
   Switch,
   Text,
   Tooltip,
@@ -45,7 +53,12 @@ import {
   useNodes,
   useNodesQuery,
 } from "contexts/NodesContext";
-import { FC, ReactNode, useState } from "react";
+import { FC, ReactNode, useEffect, useState } from "react";
+import CopyToClipboard from "react-copy-to-clipboard";
+import { useNavigate } from "react-router-dom";
+import dayjs from "dayjs";
+import { formatBytes } from "utils/formatByte";
+import { Help, PageHeader, Panel, Pill } from "./ui";
 import { Controller, Resolver, useForm, UseFormReturn } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
@@ -91,212 +104,6 @@ const PlusIcon = chakra(HeroIconPlusIcon, {
     strokeWidth: 2,
   },
 });
-
-type AccordionInboundType = {
-  toggleAccordion: () => void;
-  node: NodeType;
-};
-
-const NodeAccordion: FC<AccordionInboundType> = ({ toggleAccordion, node }) => {
-  const { updateNode, reconnectNode, setDeletingNode } = useNodes();
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const toast = useToast();
-  const form = useForm<NodeType>({
-    defaultValues: node,
-    resolver: zodResolver(NodeSchema) as Resolver<NodeType>,
-  });
-  const handleDeleteNode = setDeletingNode.bind(null, node);
-
-  const { isPending: isLoading, mutate } = useMutation({
-    mutationFn: updateNode,
-    onSuccess: () => {
-      generateSuccessMessage("Node updated successfully", toast);
-      queryClient.invalidateQueries({ queryKey: FetchNodesQueryKey });
-    },
-    onError: (e) => {
-      generateErrorMessage(e, toast, form);
-    },
-  });
-
-  const { isPending: isReconnecting, mutate: reconnect } = useMutation({
-    mutationFn: reconnectNode.bind(null, node),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: FetchNodesQueryKey });
-    },
-  });
-
-  const nodeStatus: Status = isReconnecting
-    ? "connecting"
-    : node.status
-    ? node.status
-    : "error";
-
-  return (
-    <AccordionItem
-      border="1px solid"
-      borderColor="border"
-      borderRadius="4px"
-      p={1}
-      w="full"
-    >
-      <AccordionButton px={2} borderRadius="3px" onClick={toggleAccordion}>
-        <HStack w="full" justifyContent="space-between" pr={2}>
-          <Text
-            as="span"
-            fontWeight="medium"
-            fontSize="sm"
-            flex="1"
-            textAlign="left"
-            color="text-2"
-          >
-            {node.name}
-          </Text>
-          <HStack>
-            {node.xray_version && (
-              <Badge
-                colorScheme="blue"
-                rounded="full"
-                display="inline-flex"
-                px={3}
-                py={1}
-              >
-                <Text
-                  textTransform="capitalize"
-                  fontSize="0.7rem"
-                  fontWeight="medium"
-                  letterSpacing="tighter"
-                >
-                  Xray {node.xray_version}
-                </Text>
-              </Badge>
-            )}
-            {node.status && <NodeModalStatusBadge status={nodeStatus} compact />}
-          </HStack>
-        </HStack>
-        <AccordionIcon />
-      </AccordionButton>
-      <AccordionPanel px={2} pb={2}>
-        <VStack pb={3} alignItems="flex-start">
-          {nodeStatus === "error" && (
-            <Alert status="error" size="xs">
-              <Box>
-                <HStack w="full">
-                  <AlertIcon w={4} />
-                  <Text marginInlineEnd={0}>{node.message}</Text>
-                </HStack>
-                <HStack justifyContent="flex-end" w="full">
-                  <Button
-                    size="sm"
-                    aria-label="reconnect node"
-                    leftIcon={<ReloadIcon />}
-                    onClick={() => reconnect()}
-                    disabled={isReconnecting}
-                  >
-                    {isReconnecting
-                      ? t("nodes.reconnecting")
-                      : t("nodes.reconnect")}
-                  </Button>
-                </HStack>
-              </Box>
-            </Alert>
-          )}
-        </VStack>
-        <NodeForm
-          form={form}
-          mutate={mutate}
-          isLoading={isLoading}
-          submitBtnText={t("nodes.editNode")}
-          btnLeftAdornment={
-            <Tooltip label={t("delete")} placement="top">
-              <IconButton
-                colorScheme="red"
-                variant="ghost"
-                size="sm"
-                aria-label="delete node"
-                onClick={handleDeleteNode}
-              >
-                <DeleteIcon />
-              </IconButton>
-            </Tooltip>
-          }
-        />
-      </AccordionPanel>
-    </AccordionItem>
-  );
-};
-
-type AddNodeFormType = {
-  toggleAccordion: () => void;
-  resetAccordions: () => void;
-};
-
-const AddNodeForm: FC<AddNodeFormType> = ({
-  toggleAccordion,
-  resetAccordions,
-}) => {
-  const toast = useToast();
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const { addNode } = useNodes();
-  const form = useForm<NodeType>({
-    resolver: zodResolver(NodeSchema) as Resolver<NodeType>,
-    defaultValues: {
-      ...getNodeDefaultValues(),
-      add_as_new_host: false,
-    },
-  });
-  const { isPending: isLoading, mutate } = useMutation({
-    mutationFn: addNode,
-    onSuccess: () => {
-      generateSuccessMessage(
-        t("nodes.addNodeSuccess", { name: form.getValues("name") }),
-        toast
-      );
-      queryClient.invalidateQueries({ queryKey: FetchNodesQueryKey });
-      form.reset();
-      resetAccordions();
-    },
-    onError: (e) => {
-      generateErrorMessage(e, toast, form);
-    },
-  });
-  return (
-    <AccordionItem
-      border="1px solid"
-      borderColor="border"
-      borderRadius="4px"
-      p={1}
-      w="full"
-    >
-      <AccordionButton px={2} borderRadius="3px" onClick={toggleAccordion}>
-        <Text
-          as="span"
-          fontWeight="medium"
-          fontSize="sm"
-          flex="1"
-          textAlign="left"
-          color="text-2"
-          display="flex"
-          gap={1}
-        >
-          <PlusIcon display={"inline-block"} />{" "}
-          <span>{t("nodes.addNewMarzbanNode")}</span>
-        </Text>
-      </AccordionButton>
-      <AccordionPanel px={2} py={4}>
-        <NodeForm
-          form={form}
-          mutate={mutate}
-          isLoading={isLoading}
-          submitBtnText={t("nodes.addNode")}
-          btnProps={{ variant: "solid" }}
-          addAsHost
-        />
-      </AccordionPanel>
-    </AccordionItem>
-  );
-};
 
 type NodeFormType = FC<{
   form: UseFormReturn<NodeType>;
@@ -530,75 +337,239 @@ const NodeForm: NodeFormType = ({
   );
 };
 
-export const NodesDialog: FC = () => {
-  const { isEditingNodes, onEditingNodes } = useDashboard();
+type NodeUsage = { node_id: number | null; node_name: string; uplink: number; downlink: number };
+
+const NODE_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
+  connected: "success",
+  connecting: "warning",
+  error: "danger",
+  disabled: "neutral",
+};
+
+const Stat: FC<{ label: string; children: ReactNode }> = ({ label, children }) => (
+  <VStack align="flex-start" spacing={0} minW="110px">
+    <Text fontSize="12px" color="text-muted">
+      {label}
+    </Text>
+    <Text fontSize="14px" fontWeight={500}>
+      {children}
+    </Text>
+  </VStack>
+);
+
+const NodeCard: FC<{ node: NodeType; traffic?: number; onEdit: () => void }> = ({ node, traffic, onEdit }) => {
+  const { reconnectNode, setDeletingNode } = useNodes();
   const { t } = useTranslation();
-  const [openAccordions, setOpenAccordions] = useState<any>({});
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { isPending: isReconnecting, mutate: reconnect } = useMutation({
+    mutationFn: reconnectNode.bind(null, node),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: FetchNodesQueryKey }),
+  });
+  const status: string = isReconnecting ? "connecting" : node.status || "error";
+  const error = status === "error";
+  return (
+    <Panel p={4} display="flex" flexDirection="column" gap={3} borderColor={error ? "danger-border" : "border"}>
+      <Flex justify="space-between" align="flex-start" gap={3} wrap="wrap">
+        <VStack align="flex-start" spacing={0} minW={0}>
+          <Text fontWeight={650} fontSize="15px">
+            {node.name}
+          </Text>
+          <Text fontFamily="mono" fontSize="12px" color="text-muted">
+            {node.address}:{node.port}
+          </Text>
+        </VStack>
+        <Pill tone={NODE_TONE[status] || "neutral"}>{t(`nodeStatus.${status}`, { defaultValue: status })}</Pill>
+      </Flex>
+      {error && (
+        <Box borderRadius="md" bg="danger-bg" color="danger-fg" px={3} py={2} fontSize="13px">
+          <Text fontWeight={600}>{node.message || t("nodes.unreachable")}</Text>
+          <Text>{t("nodes.errorHelp")}</Text>
+        </Box>
+      )}
+      <Flex gap={5} wrap="wrap">
+        <Stat label={t("nodes.xray")}>{node.xray_version ? `Xray ${node.xray_version}` : "—"}</Stat>
+        <Stat label={t("analytics.traffic30")}>{traffic !== undefined ? formatBytes(traffic) : "—"}</Stat>
+        <Stat label={t("nodes.usageCoefficient")}>× {node.usage_coefficient ?? 1}</Stat>
+      </Flex>
+      <HStack spacing={2} mt="auto" flexWrap="wrap">
+        {error || status === "disabled" ? (
+          <Button size="sm" colorScheme="primary" isLoading={isReconnecting} onClick={() => reconnect()}>
+            {t("nodes.retryNow")}
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" isLoading={isReconnecting} onClick={() => reconnect()}>
+            {t("nodes.reconnect")}
+          </Button>
+        )}
+        <Button size="sm" variant="outline" onClick={onEdit}>
+          {t("admins.edit")}
+        </Button>
+        {error && (
+          <Button size="sm" variant="ghost" onClick={() => navigate(`/core?node=${node.id}`)}>
+            {t("nodes.viewLogs")}
+          </Button>
+        )}
+        <IconButton size="sm" variant="ghost" colorScheme="red" aria-label={t("delete")} icon={<DeleteIcon />} ml="auto"
+          onClick={() => setDeletingNode(node)} />
+      </HStack>
+    </Panel>
+  );
+};
+
+const NodeDrawer: FC<{ node: NodeType | "new" | null; onClose: () => void }> = ({ node, onClose }) => {
+  const toast = useToast();
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { addNode, updateNode } = useNodes();
+  const isNew = node === "new";
+  const form = useForm<NodeType>({
+    resolver: zodResolver(NodeSchema) as Resolver<NodeType>,
+    defaultValues: isNew || !node ? { ...getNodeDefaultValues(), add_as_new_host: false } : node,
+  });
+  useEffect(() => {
+    form.reset(isNew || !node ? { ...getNodeDefaultValues(), add_as_new_host: false } : node);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node]);
+  const { isPending, mutate } = useMutation({
+    mutationFn: isNew ? addNode : updateNode,
+    onSuccess: () => {
+      generateSuccessMessage(isNew ? t("nodes.addNodeSuccess", { name: form.getValues("name") }) : t("nodes.updated"), toast);
+      queryClient.invalidateQueries({ queryKey: FetchNodesQueryKey });
+      onClose();
+    },
+    onError: (e) => generateErrorMessage(e, toast, form),
+  });
+  return (
+    <Drawer isOpen={!!node} onClose={onClose} placement="right" size="md">
+      <DrawerOverlay />
+      <DrawerContent maxW="480px">
+        <DrawerHeader borderBottomWidth="1px" borderColor="border">
+          <Text fontSize="18px" fontWeight={700}>
+            {isNew ? t("nodes.addNode") : (node as NodeType)?.name}
+          </Text>
+        </DrawerHeader>
+        <DrawerCloseButton top={4} />
+        <DrawerBody py={5}>
+          {node && (
+            <NodeForm form={form} mutate={mutate} isLoading={isPending} submitBtnText={isNew ? t("nodes.addNode") : t("nodes.editNode")}
+              btnProps={{ variant: "solid", colorScheme: "primary" }} addAsHost={isNew} />
+          )}
+        </DrawerBody>
+      </DrawerContent>
+    </Drawer>
+  );
+};
+
+const AddNodeGuide: FC<{ onAdd: () => void }> = ({ onAdd }) => {
+  const { t } = useTranslation();
+  const { data: settings } = useQuery({
+    queryKey: ["node-settings"],
+    queryFn: () => fetch<{ min_node_version: string; certificate: string }>("/node/settings"),
+  });
+  const compose = "curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/AnySk/Marzallow/master/docker-compose.node.yml";
+  const Step: FC<{ n: number; title: string; children: ReactNode }> = ({ n, title, children }) => (
+    <Flex gap={3}>
+      <Flex w="24px" h="24px" borderRadius="full" bg="accent-soft" color="accent-text" align="center" justify="center" fontSize="12px" fontWeight={700} flex="none">
+        {n}
+      </Flex>
+      <Box flex={1} minW={0}>
+        <Text fontWeight={600} mb={1}>
+          {title}
+        </Text>
+        {children}
+      </Box>
+    </Flex>
+  );
+  return (
+    <Panel p={5}>
+      <Text fontWeight={650} fontSize="15px">
+        {t("nodes.guideTitle")}
+      </Text>
+      <Help mb={4}>{t("nodes.guideHelp")}</Help>
+      <VStack align="stretch" spacing={4}>
+        <Step n={1} title={t("nodes.step1")}>
+          <HStack bg="surface-subtle" borderWidth="1px" borderColor="border" borderRadius="md" px={3} py={2} fontFamily="mono" fontSize="12px">
+            <Text flex={1} wordBreak="break-all">{compose}</Text>
+            <CopyToClipboard text={compose}>
+              <Button size="xs" variant="outline">{t("subTpl.copy")}</Button>
+            </CopyToClipboard>
+          </HStack>
+          <Help mt={1}>{t("nodes.step1Help")}</Help>
+        </Step>
+        <Step n={2} title={t("nodes.step2")}>
+          <HStack spacing={2}>
+            <Button size="sm" variant="outline" as="a" download="ssl_client_cert.pem" isDisabled={!settings?.certificate}
+              href={settings?.certificate ? URL.createObjectURL(new Blob([settings.certificate], { type: "text/plain" })) : undefined}>
+              {t("nodes.download-certificate")}
+            </Button>
+            {settings?.certificate && (
+              <CopyToClipboard text={settings.certificate}>
+                <Button size="sm" variant="ghost">{t("nodes.copyCertificate")}</Button>
+              </CopyToClipboard>
+            )}
+          </HStack>
+          <Help mt={1}>{t("nodes.step2Help")}</Help>
+        </Step>
+        <Step n={3} title={t("nodes.step3")}>
+          <Button size="sm" colorScheme="primary" onClick={onAdd}>
+            {t("nodes.addNode")}
+          </Button>
+          <Help mt={1}>{t("nodes.step3Help")}</Help>
+        </Step>
+      </VStack>
+    </Panel>
+  );
+};
+
+export const NodesDialog: FC = () => {
+  const { t } = useTranslation();
   const { data: nodes, isLoading } = useNodesQuery();
-
-  const onClose = () => {
-    setOpenAccordions({});
-    onEditingNodes(false);
-  };
-
-  const toggleAccordion = (index: number | string) => {
-    if (openAccordions[String(index)]) {
-      delete openAccordions[String(index)];
-    } else openAccordions[String(index)] = {};
-
-    setOpenAccordions({ ...openAccordions });
-  };
+  const [editing, setEditing] = useState<NodeType | "new" | null>(null);
+  const since = dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:mm:ss");
+  const { data: usage } = useQuery({
+    queryKey: ["nodes-usage-30d"],
+    queryFn: () => fetch<{ usages: NodeUsage[] }>("/nodes/usage", { query: { start: since } }),
+  });
+  const { data: core } = useQuery({ queryKey: ["core-status"], queryFn: () => fetch<{ version: string; started: boolean }>("/core") });
+  const traffic = new Map((usage?.usages || []).map((u) => [u.node_id, u.uplink + u.downlink]));
 
   return (
     <>
-      <Modal isOpen={isEditingNodes} onClose={onClose}>
-        <ModalOverlay />
-        <ModalContent mx="3" w="fit-content" maxW="3xl">
-          <ModalHeader pt={5}>
-            <HStack spacing={3}>
-              <Icon color="primary">
-                <ModalIcon />
-              </Icon>
-              <Text fontSize="17px" fontWeight={700}>
-                {t("nav.nodes")}
-              </Text>
-            </HStack>
-          </ModalHeader>
-          <ModalCloseButton mt={3} />
-          <ModalBody w="440px" pb={6} pt={3}>
-            <Text mb={3} opacity={0.8} fontSize="sm">
-              {t("nodes.title")}
-            </Text>
-            {isLoading && "loading..."}
-
-            <Accordion
-              w="full"
-              allowToggle
-              index={Object.keys(openAccordions).map((i) => parseInt(i))}
-            >
-              <VStack w="full">
-                {!isLoading &&
-                  nodes &&
-                  nodes.map((node, index) => {
-                    return (
-                      <NodeAccordion
-                        toggleAccordion={() => toggleAccordion(index)}
-                        key={node.name}
-                        node={node}
-                      />
-                    );
-                  })}
-
-                <AddNodeForm
-                  toggleAccordion={() => toggleAccordion((nodes || []).length)}
-                  resetAccordions={() => setOpenAccordions({})}
-                />
-              </VStack>
-            </Accordion>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
-      <DeleteNodeModal deleteCallback={() => setOpenAccordions({})} />
+      <PageHeader
+        title={t("nav.nodes")}
+        subtitle={t("nodes.subtitle")}
+        actions={
+          <Button colorScheme="primary" leftIcon={<PlusIcon w={4} h={4} />} onClick={() => setEditing("new")}>
+            {t("nodes.addNode")}
+          </Button>
+        }
+      />
+      <SimpleGrid minChildWidth="300px" spacing={4}>
+        <Panel p={4} display="flex" flexDirection="column" gap={3} bg="surface-subtle">
+          <Flex justify="space-between" align="flex-start" gap={3}>
+            <VStack align="flex-start" spacing={0}>
+              <Text fontWeight={650} fontSize="15px">{t("nodes.panelServer")}</Text>
+              <Help>{t("nodes.builtinCore")}</Help>
+            </VStack>
+            <Pill tone={core?.started ? "success" : "danger"}>{core?.started ? t("nodes.running") : t("nodes.stopped")}</Pill>
+          </Flex>
+          <Flex gap={5} wrap="wrap">
+            <Stat label={t("nodes.xray")}>{core?.version ? `Xray ${core.version}` : "—"}</Stat>
+            <Stat label={t("analytics.traffic30")}>{traffic.has(null) ? formatBytes(traffic.get(null) || 0) : "—"}</Stat>
+            <Stat label={t("nodes.usageCoefficient")}>× 1.0</Stat>
+          </Flex>
+        </Panel>
+        {isLoading && <Panel p={4}><Help>{t("loading")}</Help></Panel>}
+        {nodes?.map((node) => (
+          <NodeCard key={node.id ?? node.name} node={node} traffic={traffic.get(node.id ?? -1)} onEdit={() => setEditing(node)} />
+        ))}
+      </SimpleGrid>
+      {!isLoading && <AddNodeGuide onAdd={() => setEditing("new")} />}
+      <NodeDrawer node={editing} onClose={() => setEditing(null)} />
+      <DeleteNodeModal deleteCallback={() => setEditing(null)} />
     </>
   );
 };
+
+export default NodesDialog;

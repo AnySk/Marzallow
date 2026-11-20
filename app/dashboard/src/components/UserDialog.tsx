@@ -33,6 +33,7 @@ import { ChartPieIcon } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { resetStrategy } from "constants/UserSettings";
 import { FilterUsageType, useDashboard } from "contexts/DashboardContext";
+import { useFeatures } from "contexts/FeaturesContext";
 import dayjs from "dayjs";
 import { FC, ReactNode, useEffect, useState } from "react";
 import ReactApexChart from "react-apexcharts";
@@ -61,6 +62,8 @@ import { UsageFilter, createUsageConfig } from "./UsageFilter";
 import { TemplatePicker } from "./TemplatesModal";
 import { UserExtras } from "./UserExtras";
 import { UserTemplateSelects } from "./TemplateSelects";
+import { AccessSelect } from "./AccessListsPage";
+import useGetUser from "hooks/useGetUser";
 import { UserTemplate } from "types/Management";
 import { ReloadIcon } from "./Filters";
 import classNames from "classnames";
@@ -109,6 +112,8 @@ const getDefaultValues = (): FormType => {
     v2ray_json_template_id: null,
     singbox_template_id: null,
     clash_template_id: null,
+    access_list_id: null,
+    access_unrestricted: false,
     proxies: {
       vless: { id: "", flow: "" },
       vmess: { id: "" },
@@ -140,6 +145,8 @@ const baseSchema = {
   v2ray_json_template_id: z.number().nullable().optional(),
   singbox_template_id: z.number().nullable().optional(),
   clash_template_id: z.number().nullable().optional(),
+  access_list_id: z.number().nullable().optional(),
+  access_unrestricted: z.boolean().nullable().optional(),
   selected_proxies: z.array(z.string()).refine((value) => value.length > 0, {
     message: "userDialog.selectOneProtocol",
   }),
@@ -298,6 +305,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
     for (const field of ["v2ray_json_template_id", "singbox_template_id", "clash_template_id"] as const) {
       if (template[field]) form.setValue(field, template[field], options);
     }
+    if (template.access_list_id || template.access_unrestricted) {
+      form.setValue("access_list_id", template.access_list_id || null, options);
+      form.setValue("access_unrestricted", !!template.access_unrestricted, options);
+    }
     if (template.username_prefix || template.username_suffix) {
       const username = form.getValues("username") || "";
       form.setValue(
@@ -307,6 +318,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
       );
     }
   };
+
+  // "Create user" on a user template card
+  useEffect(() => {
+    const template = useFeatures.getState().createFrom;
+    if (isCreatingNewUser && template) {
+      applyTemplate(template);
+      useFeatures.getState().setCreateFrom(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreatingNewUser]);
 
   const submit = (values: FormType) => {
     setLoading(true);
@@ -335,6 +356,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
       // the API reads null as "unchanged"; 0 resets to the default template
       for (const field of ["v2ray_json_template_id", "singbox_template_id", "clash_template_id"] as const)
         body[field] = values[field] || 0;
+      body.access_list_id = values.access_list_id || 0;
+      body.access_unrestricted = !!values.access_unrestricted;
     }
 
     methods[method](body)
@@ -420,6 +443,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
     });
   };
   const expireValue = useWatch({ control: form.control, name: "expire" });
+  const accessRefs = useWatch({ control: form.control, name: ["access_list_id", "access_unrestricted"] });
+  const { userData } = useGetUser();
   const tplRefs = useWatch({
     control: form.control,
     name: ["v2ray_json_template_id", "singbox_template_id", "clash_template_id"],
@@ -710,6 +735,19 @@ export const UserDialog: FC<UserDialogProps> = () => {
                 </FormControl>
               </FormSection>
 
+              {userData.is_sudo && (
+                <FormSection title={t("access.sectionTitle")} help={t("access.sectionHelp")}>
+                  <AccessSelect
+                    listId={accessRefs[0]}
+                    unrestricted={accessRefs[1]}
+                    onChange={(listId, free) => {
+                      form.setValue("access_list_id", listId, { shouldDirty: true });
+                      form.setValue("access_unrestricted", free, { shouldDirty: true });
+                    }}
+                  />
+                </FormSection>
+              )}
+
               <Box px={6} py={5} borderBottomWidth="1px" borderColor="border-subtle">
                 <UserTemplateSelects
                   value={{
@@ -740,9 +778,15 @@ export const UserDialog: FC<UserDialogProps> = () => {
                             fetchUsageWithFilter(query);
                           }}
                         />
-                        <Box width={{ base: "100%", md: "80%" }} justifySelf="center">
-                          <ReactApexChart options={usage.options} series={usage.series} type="donut" />
-                        </Box>
+                        {(usage.series as number[]).some((v) => v > 0) ? (
+                          <Box width={{ base: "100%", md: "80%" }} justifySelf="center">
+                            <ReactApexChart options={usage.options} series={usage.series} type="donut" />
+                          </Box>
+                        ) : (
+                          <Text fontSize="13px" color="text-muted" py={6}>
+                            {t("analytics.noTraffic")}
+                          </Text>
+                        )}
                       </VStack>
                     )}
                   </FormSection>

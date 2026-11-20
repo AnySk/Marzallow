@@ -417,6 +417,8 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None) -> User:
         v2ray_json_template_id=user.v2ray_json_template_id or None,
         singbox_template_id=user.singbox_template_id or None,
         clash_template_id=user.clash_template_id or None,
+        access_list_id=user.access_list_id or None,
+        access_unrestricted=bool(user.access_unrestricted),
         next_plan=NextPlan(
             data_limit=user.next_plan.data_limit,
             expire=user.next_plan.expire,
@@ -536,6 +538,10 @@ def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
     for field in ("v2ray_json_template_id", "singbox_template_id", "clash_template_id"):
         if (value := getattr(modify, field)) is not None:
             setattr(dbuser, field, value or None)  # 0 resets to the default
+    if modify.access_list_id is not None:
+        dbuser.access_list_id = modify.access_list_id or None
+    if modify.access_unrestricted is not None:
+        dbuser.access_unrestricted = modify.access_unrestricted
 
     if modify.data_limit_reset_strategy is not None:
         dbuser.data_limit_reset_strategy = modify.data_limit_reset_strategy.value
@@ -1143,6 +1149,8 @@ def create_user_template(db: Session, user_template: UserTemplateCreate) -> User
         v2ray_json_template_id=user_template.v2ray_json_template_id or None,
         singbox_template_id=user_template.singbox_template_id or None,
         clash_template_id=user_template.clash_template_id or None,
+        access_list_id=user_template.access_list_id or None,
+        access_unrestricted=bool(user_template.access_unrestricted),
         inbounds=db.query(ProxyInbound).filter(ProxyInbound.tag.in_(inbound_tags)).all()
     )
     db.add(dbuser_template)
@@ -1177,6 +1185,10 @@ def update_user_template(
     for field in ("v2ray_json_template_id", "singbox_template_id", "clash_template_id"):
         if (value := getattr(modified_user_template, field)) is not None:
             setattr(dbuser_template, field, value or None)  # 0 resets to the default
+    if modified_user_template.access_list_id is not None:
+        dbuser_template.access_list_id = modified_user_template.access_list_id or None
+    if modified_user_template.access_unrestricted is not None:
+        dbuser_template.access_unrestricted = modified_user_template.access_unrestricted
 
     if modified_user_template.inbounds:
         inbound_tags: List[str] = []
@@ -1561,3 +1573,47 @@ def get_daily_usage(db: Session, start: datetime, end: datetime,
         query = query.filter(User.username == username)
     rows = query.group_by(day).order_by(day).all()
     return [{"date": str(d)[:10], "used_traffic": int(total or 0)} for d, total in rows]
+
+
+def get_usage_summary(db: Session, start: datetime, end: datetime, admins: Optional[List[str]] = None) -> dict:
+    """Traffic in [start, end] for the analytics page: total, the same-length period
+    before it, per-user figures (top 10, median of users with traffic), busiest
+    day and users created in the period."""
+    def scoped(query):
+        query = query.join(User, NodeUserUsage.user_id == User.id)
+        if admins:
+            query = query.filter(User.admin.has(Admin.username.in_(admins)))
+        return query
+
+    def total(a, b):
+        q = scoped(db.query(func.coalesce(func.sum(NodeUserUsage.used_traffic), 0))) \
+            .filter(NodeUserUsage.created_at >= a, NodeUserUsage.created_at <= b)
+        return int(q.scalar() or 0)
+
+    per_user = (scoped(db.query(User.username, func.sum(NodeUserUsage.used_traffic).label("used")))
+                .filter(NodeUserUsage.created_at >= start, NodeUserUsage.created_at <= end)
+                .group_by(User.username).all())
+    amounts = sorted(int(u or 0) for _, u in per_user if u)
+    median = 0
+    if amounts:
+        mid = len(amounts) // 2
+        median = amounts[mid] if len(amounts) % 2 else (amounts[mid - 1] + amounts[mid]) // 2
+    top = sorted(((name, int(u or 0)) for name, u in per_user), key=lambda x: -x[1])[:10]
+
+    days = get_daily_usage(db, start, end, admins=admins)
+    busiest = max(days, key=lambda d: d["used_traffic"]) if days else None
+
+    new_users = db.query(func.count(User.id)).filter(User.created_at >= start, User.created_at <= end)
+    if admins:
+        new_users = new_users.filter(User.admin.has(Admin.username.in_(admins)))
+
+    return {
+        "total": total(start, end),
+        "previous_total": total(start - (end - start), start),
+        "users_with_traffic": len(amounts),
+        "average_per_user": (sum(amounts) // len(amounts)) if amounts else 0,
+        "median_per_user": median,
+        "busiest_day": busiest,
+        "new_users": int(new_users.scalar() or 0),
+        "top_users": [{"username": n, "used_traffic": u} for n, u in top],
+    }

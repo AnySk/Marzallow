@@ -83,6 +83,11 @@ class User(BaseModel):
     singbox_template_id: Optional[int] = Field(None, nullable=True, ge=0)
     clash_template_id: Optional[int] = Field(None, nullable=True, ge=0)
 
+    # server-side access (app/xray/access.py); on modify null = unchanged,
+    # access_list_id 0 = back to the default policy. Sudo admins only.
+    access_list_id: Optional[int] = Field(None, nullable=True, ge=0)
+    access_unrestricted: Optional[bool] = Field(None, nullable=True)
+
     @field_validator('data_limit', mode='before')
     def cast_to_int(cls, v):
         if v is None:  # Allow None values
@@ -349,6 +354,8 @@ class SubscriptionUserResponse(UserResponse):
     v2ray_json_template_id: int | None = Field(None, exclude=True)
     singbox_template_id: int | None = Field(None, exclude=True)
     clash_template_id: int | None = Field(None, exclude=True)
+    access_list_id: int | None = Field(None, exclude=True)
+    access_unrestricted: bool | None = Field(None, exclude=True)
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -389,6 +396,7 @@ class UsersBulkActionType(str, Enum):
     reset_usage = "reset_usage"
     revoke_sub = "revoke_sub"
     extend = "extend"          # add `days` to the expiry date
+    set_expire = "set_expire"  # set the expiry date to `expire`
     add_data = "add_data"      # add `data_limit` bytes to the data limit
 
 
@@ -397,6 +405,9 @@ class UsersBulkAction(BaseModel):
     action: UsersBulkActionType
     days: Optional[int] = Field(None, gt=0, le=3650)
     data_limit: Optional[int] = Field(None, gt=0)
+    expire: Optional[int] = Field(None, gt=0)  # set_expire: UNIX time
+    # extend / set_expire: also apply to expired users (extend counts them from today)
+    reactivate_expired: bool = True
 
 
 class UsersBulkResult(BaseModel):

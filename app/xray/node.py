@@ -91,6 +91,7 @@ class ReSTXRayNode:
 
         self._api = None
         self._started = False
+        self.running_config = None  # the config the node last started with (access rules)
 
     def _prepare_config(self, config: XRayConfig):
         for inbound in config.get("inbounds", []):
@@ -207,6 +208,7 @@ class ReSTXRayNode:
         except (grpc.FutureTimeoutError, grpc.FutureCancelledError):
             raise ConnectionError('Failed to connect to node\'s API')
 
+        self.running_config = config
         return res
 
     def stop(self):
@@ -215,6 +217,7 @@ class ReSTXRayNode:
 
         self.make_request('/stop', timeout=5)
         self._api = None
+        self.running_config = None
         self._started = False
 
     def restart(self, config: XRayConfig):
@@ -240,6 +243,7 @@ class ReSTXRayNode:
         except (grpc.FutureTimeoutError, grpc.FutureCancelledError):
             raise ConnectionError('Failed to connect to node\'s API')
 
+        self.running_config = config
         return res
 
     def _bg_fetch_logs(self):
@@ -332,6 +336,7 @@ class RPyCXRayNode:
 
         self.started = False
 
+        self.running_config = None
         self._keyfile = string_to_temp_file(ssl_key)
         self._certfile = string_to_temp_file(ssl_cert)
 
@@ -454,11 +459,13 @@ class RPyCXRayNode:
                 raise RuntimeError(last_log)
 
             raise ConnectionError('Failed to connect to node\'s API')
+        self.running_config = config
 
     def stop(self):
         self.remote.stop()
         self.started = False
         self._api = None
+        self.running_config = None
 
     def restart(self, config: XRayConfig):
         self.started = False
@@ -479,6 +486,7 @@ class RPyCXRayNode:
             grpc.channel_ready_future(self._api._channel).result(timeout=5)
         except (grpc.FutureTimeoutError, grpc.FutureCancelledError):
             raise ConnectionError('Failed to connect to node\'s API')
+        self.running_config = config
 
     @contextmanager
     def get_logs(self):
