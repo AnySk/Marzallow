@@ -46,6 +46,7 @@ import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Chip, Help, PageHeader, Panel } from "./ui";
 import { UserTemplateSelects } from "./TemplateSelects";
+import { AccessSelect } from "./AccessListsPage";
 import { UserTemplateRefs } from "types/SubscriptionTemplate";
 
 const MoreIcon = chakra(EllipsisHorizontalIcon, { baseStyle: { w: 4, h: 4 } });
@@ -62,6 +63,8 @@ type TemplateForm = {
   username_suffix: string;
   inbounds: UserInbounds;
   refs: UserTemplateRefs;
+  access_list_id: number | null;
+  access_unrestricted: boolean;
 };
 
 export const useTemplates = (enabled = true) =>
@@ -118,6 +121,8 @@ export const TemplatesModal: FC = () => {
         singbox_template_id: template?.singbox_template_id || null,
         clash_template_id: template?.clash_template_id || null,
       },
+      access_list_id: template?.access_list_id || null,
+      access_unrestricted: !!template?.access_unrestricted,
     });
   };
 
@@ -134,6 +139,8 @@ export const TemplatesModal: FC = () => {
         v2ray_json_template_id: form!.refs.v2ray_json_template_id || 0,
         singbox_template_id: form!.refs.singbox_template_id || 0,
         clash_template_id: form!.refs.clash_template_id || 0,
+        access_list_id: form!.access_list_id || 0,
+        access_unrestricted: form!.access_unrestricted,
       };
       return editing === "new"
         ? fetch("/user_template", { method: "POST", body })
@@ -322,6 +329,11 @@ export const TemplatesModal: FC = () => {
                     <UserTemplateSelects compact value={form.refs}
                       onChange={(field, id) => setForm({ ...form, refs: { ...form.refs, [field]: id } })} />
                   </Box>
+                  <FormControl>
+                    <FormLabel>{t("access.sectionTitle")}</FormLabel>
+                    <AccessSelect listId={form.access_list_id} unrestricted={form.access_unrestricted}
+                      onChange={(listId, free) => setForm({ ...form, access_list_id: listId, access_unrestricted: free })} />
+                  </FormControl>
                   <Help>{templateSummary(form, t)}</Help>
                 </VStack>
               </DrawerBody>

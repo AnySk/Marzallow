@@ -159,3 +159,7 @@ JOB_RECORD_NODE_USAGES_INTERVAL = config("JOB_RECORD_NODE_USAGES_INTERVAL", cast
 JOB_RECORD_USER_USAGES_INTERVAL = config("JOB_RECORD_USER_USAGES_INTERVAL", cast=int, default=10)
 JOB_REVIEW_USERS_INTERVAL = config("JOB_REVIEW_USERS_INTERVAL", cast=int, default=10)
 JOB_SEND_NOTIFICATIONS_INTERVAL = config("JOB_SEND_NOTIFICATIONS_INTERVAL", cast=int, default=30)
+
+# Users without an access list (dashboard: Access lists): "all" (no limits),
+# "except_listed" (anything except the domains in access lists) or "none".
+ACCESS_DEFAULT_POLICY = config("ACCESS_DEFAULT_POLICY", default="all")

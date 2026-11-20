@@ -55,6 +55,8 @@ export type User = {
   sub_last_user_agent?: string | null;
   next_plan?: NextPlan | null;
   admin?: { username: string; is_sudo: boolean } | null;
+  access_list_id?: number | null;
+  access_unrestricted?: boolean;
 } & UserTemplateRefs;
 
 export type NextPlan = {
@@ -78,6 +80,8 @@ export type UserCreate = Pick<
   | "v2ray_json_template_id"
   | "singbox_template_id"
   | "clash_template_id"
+  | "access_list_id"
+  | "access_unrestricted"
 >;
 
 export type UserApi = {

@@ -417,6 +417,8 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None) -> User:
         v2ray_json_template_id=user.v2ray_json_template_id or None,
         singbox_template_id=user.singbox_template_id or None,
         clash_template_id=user.clash_template_id or None,
+        access_list_id=user.access_list_id or None,
+        access_unrestricted=bool(user.access_unrestricted),
         next_plan=NextPlan(
             data_limit=user.next_plan.data_limit,
             expire=user.next_plan.expire,
@@ -536,6 +538,10 @@ def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
     for field in ("v2ray_json_template_id", "singbox_template_id", "clash_template_id"):
         if (value := getattr(modify, field)) is not None:
             setattr(dbuser, field, value or None)  # 0 resets to the default
+    if modify.access_list_id is not None:
+        dbuser.access_list_id = modify.access_list_id or None
+    if modify.access_unrestricted is not None:
+        dbuser.access_unrestricted = modify.access_unrestricted
 
     if modify.data_limit_reset_strategy is not None:
         dbuser.data_limit_reset_strategy = modify.data_limit_reset_strategy.value
@@ -1143,6 +1149,8 @@ def create_user_template(db: Session, user_template: UserTemplateCreate) -> User
         v2ray_json_template_id=user_template.v2ray_json_template_id or None,
         singbox_template_id=user_template.singbox_template_id or None,
         clash_template_id=user_template.clash_template_id or None,
+        access_list_id=user_template.access_list_id or None,
+        access_unrestricted=bool(user_template.access_unrestricted),
         inbounds=db.query(ProxyInbound).filter(ProxyInbound.tag.in_(inbound_tags)).all()
     )
     db.add(dbuser_template)
@@ -1177,6 +1185,10 @@ def update_user_template(
     for field in ("v2ray_json_template_id", "singbox_template_id", "clash_template_id"):
         if (value := getattr(modified_user_template, field)) is not None:
             setattr(dbuser_template, field, value or None)  # 0 resets to the default
+    if modified_user_template.access_list_id is not None:
+        dbuser_template.access_list_id = modified_user_template.access_list_id or None
+    if modified_user_template.access_unrestricted is not None:
+        dbuser_template.access_unrestricted = modified_user_template.access_unrestricted
 
     if modified_user_template.inbounds:
         inbound_tags: List[str] = []

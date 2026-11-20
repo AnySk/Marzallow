@@ -17,6 +17,8 @@ export type UserTemplate = {
   username_prefix: string | null;
   username_suffix: string | null;
   inbounds: UserInbounds;
+  access_list_id?: number | null;
+  access_unrestricted?: boolean;
 } & UserTemplateRefs;
 
 export type BulkAction =

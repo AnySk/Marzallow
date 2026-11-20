@@ -156,6 +156,17 @@ DEFINITIONS: List[SettingDef] = [
                "Admin session lifetime in minutes (0 = never expires); applies to new logins",
                validate=_range(0, 525600)),
 ]
+
+
+def _policy(value):
+    if value not in ("all", "except_listed", "none"):
+        raise ValueError('must be "all", "except_listed" or "none"')
+
+
+DEFINITIONS.append(SettingDef(
+    "ACCESS_DEFAULT_POLICY", "access", "str",
+    "What users without an access list may reach: all, except_listed or none", validate=_policy))
+
 BY_KEY: Dict[str, SettingDef] = {d.key: d for d in DEFINITIONS}
 
 

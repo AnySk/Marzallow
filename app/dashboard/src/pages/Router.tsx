@@ -15,6 +15,7 @@ const TemplatesPage = lazy(() => import("components/TemplatesModal"));
 const SubTemplatesPage = lazy(() => import("components/SubscriptionTemplatesModal"));
 const AdminsPage = lazy(() => import("components/AdminsModal"));
 const AnalyticsPage = lazy(() => import("components/AnalyticsModal"));
+const AccessPage = lazy(() => import("components/AccessListsPage"));
 
 const fetchAdminLoader = () => {
   return fetch("/admin", {
@@ -46,6 +47,7 @@ export const router = createHashRouter([
       { path: "subscription-templates", element: page(SubTemplatesPage) },
       { path: "admins", element: page(AdminsPage) },
       { path: "analytics", element: page(AnalyticsPage) },
+      { path: "access", element: page(AccessPage) },
     ],
   },
   {

@@ -25,6 +25,8 @@ from app.models.user import (
 )
 from app.utils import report, responses
 from app.routers.subscription_template import check_refs as check_template_refs
+from app.routers.access_list import check_access_fields
+from app.xray import access
 
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
 
@@ -62,6 +64,7 @@ def add_user(
             )
 
     check_template_refs(db, new_user)
+    access_changed = check_access_fields(db, new_user, admin)
     try:
         dbuser = crud.create_user(
             db, new_user, admin=crud.get_admin(db, admin.username)
@@ -74,6 +77,8 @@ def add_user(
     user = UserResponse.model_validate(dbuser)
     report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
     logger.info(f'New user "{dbuser.username}" added')
+    if access_changed:
+        access.schedule_restart()  # the server rules name users on access lists
     return user
 
 
@@ -118,7 +123,10 @@ def modify_user(
 
     old_status = dbuser.status
     check_template_refs(db, modified_user)
+    access_changed = check_access_fields(db, modified_user, admin, before=dbuser)
     dbuser = crud.update_user(db, dbuser, modified_user)
+    if access_changed:
+        access.schedule_restart()
     user = UserResponse.model_validate(dbuser)
 
     if user.status in [UserStatus.active, UserStatus.on_hold]:

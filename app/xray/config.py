@@ -452,6 +452,9 @@ class XRayConfig(dict):
 
                         clients.append(client)
 
+            from app.xray import access  # server-side access lists
+            access.apply(config, db)
+
         if DEBUG:
             with open('generated_config-debug.json', 'w') as f:
                 f.write(config.to_json(indent=4))
