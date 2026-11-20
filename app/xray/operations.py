@@ -10,6 +10,7 @@ from app.db import GetDB, crud
 from app.models.node import NodeStatus
 from app.models.user import UserResponse
 from app.utils.concurrency import threaded_function
+from app.xray import access
 from app.xray.node import XRayNode
 from xray_api import XRay as XRayAPI
 from xray_api.types.account import Account, XTLSFlows
@@ -86,6 +87,8 @@ def _ready_node_apis() -> list:
 
 
 def add_user(dbuser: "DBUser"):
+    if not access.allowed_in_core(dbuser):
+        return  # added by the scheduled restart, with the rules that limit them
     user = UserResponse.model_validate(dbuser)
     email = f"{dbuser.id}.{dbuser.username}"
     node_apis = _ready_node_apis()
@@ -118,6 +121,8 @@ def remove_user(dbuser: "DBUser"):
 
 
 def update_user(dbuser: "DBUser"):
+    if not access.allowed_in_core(dbuser):
+        return remove_user(dbuser)  # back with the scheduled restart, with their rules
     user = UserResponse.model_validate(dbuser)
     email = f"{dbuser.id}.{dbuser.username}"
     node_apis = _ready_node_apis()

@@ -149,6 +149,48 @@ def warnings(config: dict) -> List[str]:
     return found
 
 
+# --- keeping users out of Xray until their rules are live ------------------------------
+
+_covered_cache: tuple = (None, frozenset())
+
+
+def _covered_emails() -> frozenset:
+    """Users named in the access rules of the config Xray is running now."""
+    global _covered_cache
+    from app import xray
+
+    config = xray.core.running_config
+    if _covered_cache[0] is not config:
+        rules = ((config or {}).get("routing") or {}).get("rules", [])
+        _covered_cache = (config, frozenset(u for rule in rules for u in rule.get("user") or []))
+    return _covered_cache[1]
+
+
+def allowed_in_core(dbuser) -> bool:
+    """False for a user who must be held to an access list (their own or their
+    admin's) while the running config has no rules for them yet: adding them
+    now would give them the default access. A restart is scheduled to bring
+    them in with their rules. Every path that adds or updates a user in Xray
+    goes through this (app/xray/operations.py)."""
+    from sqlalchemy.orm import object_session
+
+    from app.db.models import AccessList
+
+    if dbuser.access_unrestricted:
+        return True  # at worst the default policy applies until the restart
+    list_id = dbuser.access_list_id or (dbuser.admin.access_list_id if dbuser.admin else None)
+    if not list_id:
+        return True
+    session = object_session(dbuser)
+    if session is not None and session.get(AccessList, list_id) is None:
+        return True  # dangling id: no list to enforce
+    if f"{dbuser.id}.{dbuser.username}" in _covered_emails():
+        return True
+    if not status["pending"]:
+        schedule_restart()
+    return False
+
+
 # --- applying changes -------------------------------------------------------------
 
 _timer: Optional[threading.Timer] = None

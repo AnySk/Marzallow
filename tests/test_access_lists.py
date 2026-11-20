@@ -235,3 +235,33 @@ def test_retries_then_reports(monkeypatch):
     assert len(calls) == 1 + len(access.RETRY_DELAYS) and delays == list(access.RETRY_DELAYS)
     assert access.status == {"pending": False, "error": "down"}
     access.status.update(pending=False, error=None)
+
+
+def test_no_path_adds_a_listed_user_before_its_rules(client, auth, make_user, lists, monkeypatch):
+    """Whatever adds the user to Xray (create, enable, reset, jobs) waits for rules naming them."""
+    from app import xray
+    from app.db import GetDB, crud
+    from app.xray import operations
+
+    scheduled = []
+    monkeypatch.setattr(access, "schedule_restart", lambda *a, **k: scheduled.append(1))
+    access.status.update(pending=False, error=None)
+    lst = lists("gate", ["qwer.qwer"])
+    make_user("acc_gate", access_list_id=lst["id"])
+    with GetDB() as db:
+        dbuser = crud.get_user(db, "acc_gate")
+        # the running config predates this user: they must stay out of Xray
+        assert access.allowed_in_core(dbuser) is False and scheduled
+        calls = []
+        monkeypatch.setattr(operations, "_add_user_to_inbound", lambda *a: calls.append(a))
+        operations.add_user(dbuser)
+        assert calls == []
+        # once Xray runs a config whose rules name them, they're let in
+        access.apply_now()
+        assert access.allowed_in_core(dbuser) is True
+        operations.add_user(dbuser)
+        assert calls
+    # an unlisted user is never held back
+    make_user("acc_free")
+    with GetDB() as db:
+        assert access.allowed_in_core(crud.get_user(db, "acc_free")) is True
