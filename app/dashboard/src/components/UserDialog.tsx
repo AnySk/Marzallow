@@ -751,9 +751,15 @@ export const UserDialog: FC<UserDialogProps> = () => {
                             fetchUsageWithFilter(query);
                           }}
                         />
-                        <Box width={{ base: "100%", md: "80%" }} justifySelf="center">
-                          <ReactApexChart options={usage.options} series={usage.series} type="donut" />
-                        </Box>
+                        {(usage.series as number[]).some((v) => v > 0) ? (
+                          <Box width={{ base: "100%", md: "80%" }} justifySelf="center">
+                            <ReactApexChart options={usage.options} series={usage.series} type="donut" />
+                          </Box>
+                        ) : (
+                          <Text fontSize="13px" color="text-muted" py={6}>
+                            {t("analytics.noTraffic")}
+                          </Text>
+                        )}
                       </VStack>
                     )}
                   </FormSection>
