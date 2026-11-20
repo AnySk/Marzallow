@@ -1,6 +1,6 @@
 [project]
 name = "marzallow"
-version = "0.8.6"
+version = "0.10.0"
 description = "Marzallow: proxy management panel for Xray-core (fork of Gozargah/Marzban)"
 readme = "README.md"
 license = "AGPL-3.0-only"
