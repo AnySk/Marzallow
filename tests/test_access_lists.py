@@ -265,3 +265,37 @@ def test_no_path_adds_a_listed_user_before_its_rules(client, auth, make_user, li
     make_user("acc_free")
     with GetDB() as db:
         assert access.allowed_in_core(crud.get_user(db, "acc_free")) is True
+
+
+def test_each_node_is_gated_by_its_own_config(client, auth, make_user, lists, monkeypatch):
+    """A node that missed the restart (old config) doesn't get the listed user."""
+    from app import xray
+    from app.db import GetDB, crud
+    from app.xray import operations
+
+    monkeypatch.setattr(access, "schedule_restart", lambda *a, **k: None)
+    lst = lists("nodes", ["qwer.qwer"])
+    make_user("acc_node", access_list_id=lst["id"])
+    access.apply_now()  # the panel's core now has the rules
+
+    class FakeNode:
+        connected = started = True
+
+        def __init__(self, config):
+            self.running_config = config
+            self.api = object()
+
+    old = FakeNode({"routing": {"rules": []}})
+    fresh = FakeNode(xray.core.running_config)
+    monkeypatch.setattr(xray, "nodes", {1: old, 2: fresh})
+    added, removed = [], []
+    monkeypatch.setattr(operations, "_add_user_to_inbound", lambda api, tag, acc: added.append(api))
+    monkeypatch.setattr(operations, "_alter_inbound_user", lambda api, tag, acc: added.append(api))
+    monkeypatch.setattr(operations, "_remove_user_from_inbound", lambda api, tag, email: removed.append(api))
+    with GetDB() as db:
+        dbuser = crud.get_user(db, "acc_node")
+        operations.add_user(dbuser)
+        assert xray.api in added and fresh.api in added and old.api not in added
+        added.clear()
+        operations.update_user(dbuser)
+        assert old.api in removed and old.api not in added and fresh.api in added
